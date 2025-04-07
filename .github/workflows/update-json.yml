@@ -1,1 +1,83 @@
+name: Update JSON File
 
+on:
+  schedule:
+    - cron: '0 * * * *' # Her saat başı çalışır
+  workflow_dispatch: # Manuel çalıştırma için
+
+jobs:
+  update-json:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+
+      - name: Install dependencies
+        run: npm install axios
+
+      - name: Fetch and update JSON
+        run: |
+          node -e "
+          const axios = require('axios');
+          const fs = require('fs').promises;
+
+          (async () => {
+            try {
+              // JSON dosyasını çek
+              const response = await axios.get('https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json');
+              let jsonData = response.data;
+              let jsonString = jsonData.toString();
+
+              // `var data =` ifadesini kaldır
+              jsonString = jsonString.replace('var data =', '');
+
+              // JSON'u parse et
+              jsonData = JSON.parse(jsonString);
+
+              // JSON formatını düzelt
+              let newsList = [];
+              if (Array.isArray(jsonData)) {
+                newsList = jsonData.map(item => ({
+                  haberbaslik: item.haberbaslik?.toString() ?? '',
+                  haberkisa: item.haberkisa?.toString() ?? '',
+                  tarih: item.tarih?.toString() ?? '',
+                  kategoriadi: item.kategoriadi?.toString() ?? '',
+                  okunma: item.okunma?.toString() ?? '',
+                  haberresim: item.haberresim?.toString() ?? '',
+                  detay_url: item.detay_url?.toString() ?? ''
+                }));
+              } else if (jsonData.haberler && Array.isArray(jsonData.haberler)) {
+                newsList = jsonData.haberler.map(item => ({
+                  haberbaslik: item.haberbaslik?.toString() ?? '',
+                  haberkisa: item.haberkisa?.toString() ?? '',
+                  tarih: item.tarih?.toString() ?? '',
+                  kategoriadi: item.kategoriadi?.toString() ?? '',
+                  okunma: item.okunma?.toString() ?? '',
+                  haberresim: item.haberresim?.toString() ?? '',
+                  detay_url: item.detay_url?.toString() ?? ''
+                }));
+              } else {
+                throw new Error('JSON formatı beklenenden farklı');
+              }
+
+              // Düzeltilmiş JSON'u dosyaya yaz
+              await fs.writeFile('data-haberler.json', JSON.stringify(newsList, null, 2));
+            } catch (error) {
+              console.error('Hata:', error.message);
+              process.exit(1);
+            }
+          })"
+
+      - name: Commit changes
+        run: |
+          git config --global user.name 'GitHub Action'
+          git config --global user.email 'action@github.com'
+          git add data-haberler.json
+          git commit -m 'JSON dosyası güncellendi' || echo "Değişiklik yok"
+          git push
