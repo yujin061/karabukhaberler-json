@@ -30,7 +30,11 @@ jobs:
           (async () => {
             try {
               // JSON dosyasını çek
-              const response = await axios.get('https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json');
+              const response = await axios.get('https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json', {
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
+              });
               let jsonData = response.data;
               let jsonString = jsonData.toString();
 
@@ -43,25 +47,35 @@ jobs:
               // JSON formatını düzelt
               let newsList = [];
               if (Array.isArray(jsonData)) {
-                newsList = jsonData.map(item => ({
-                  haberbaslik: item.haberbaslik?.toString() ?? '',
-                  haberkisa: item.haberkisa?.toString() ?? '',
-                  tarih: item.tarih?.toString() ?? '',
-                  kategoriadi: item.kategoriadi?.toString() ?? '',
-                  okunma: item.okunma?.toString() ?? '',
-                  haberresim: item.haberresim?.toString() ?? '',
-                  detay_url: item.detay_url?.toString() ?? ''
-                }));
+                // En son haberin ID'si
+                let latestNewsId = 100667939; // En son haberin ID'si (örnek olarak)
+                newsList = jsonData.map((item, index) => {
+                  // Her haber için ID'yi geriye doğru azalt
+                  const newsId = latestNewsId - index;
+                  return {
+                    haberbaslik: item.haberbaslik?.toString() ?? '',
+                    haberkisa: item.haberkisa?.toString() ?? '',
+                    tarih: item.tarih?.toString() ?? '',
+                    kategoriadi: item.kategoriadi?.toString() ?? '',
+                    okunma: item.okunma?.toString() ?? '',
+                    haberresim: item.haberresim?.toString() ?? '',
+                    detay_url: item.detay_url?.toString() || `https://www.karabuk.bel.tr/haber.asp?id=${newsId}`
+                  };
+                });
               } else if (jsonData.haberler && Array.isArray(jsonData.haberler)) {
-                newsList = jsonData.haberler.map(item => ({
-                  haberbaslik: item.haberbaslik?.toString() ?? '',
-                  haberkisa: item.haberkisa?.toString() ?? '',
-                  tarih: item.tarih?.toString() ?? '',
-                  kategoriadi: item.kategoriadi?.toString() ?? '',
-                  okunma: item.okunma?.toString() ?? '',
-                  haberresim: item.haberresim?.toString() ?? '',
-                  detay_url: item.detay_url?.toString() ?? ''
-                }));
+                let latestNewsId = 100667939; // En son haberin ID'si (örnek olarak)
+                newsList = jsonData.haberler.map((item, index) => {
+                  const newsId = latestNewsId - index;
+                  return {
+                    haberbaslik: item.haberbaslik?.toString() ?? '',
+                    haberkisa: item.haberkisa?.toString() ?? '',
+                    tarih: item.tarih?.toString() ?? '',
+                    kategoriadi: item.kategoriadi?.toString() ?? '',
+                    okunma: item.okunma?.toString() ?? '',
+                    haberresim: item.haberresim?.toString() ?? '',
+                    detay_url: item.detay_url?.toString() || `https://www.karabuk.bel.tr/haber.asp?id=${newsId}`
+                  };
+                });
               } else {
                 throw new Error('JSON formatı beklenenden farklı');
               }
