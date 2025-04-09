@@ -2,8 +2,8 @@ name: Update JSON File
 
 on:
   schedule:
-    - cron: '0 */3 * * *' # Her 3 saatte bir çalışır
-  workflow_dispatch: # Manuel çalıştırma için
+    - cron: '0 */3 * * *'
+  workflow_dispatch:
 
 jobs:
   update-json:
@@ -36,9 +36,7 @@ jobs:
                   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
                   "Accept": "application/json, text/plain, */*",
                   "Referer": "https://www.karabuk.bel.tr/",
-                  "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-                  "Connection": "keep-alive",
-                  "Cache-Control": "no-cache"
+                  "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7"
                 },
                 responseType: "arraybuffer",
                 timeout: 10000
@@ -46,129 +44,91 @@ jobs:
 
               console.log("Yanit alindi. Status Code:", response.status);
               
-              // Yanıtı UTF-8'e çevir
-              let jsonString = iconv.decode(response.data, "windows-1254");
-              
-              // Ham veriyi logla
-              console.log("Ham veri (ilk 200 karakter):", jsonString.substring(0, 200));
-              
-              // JavaScript değişken tanımını kaldır
-              jsonString = jsonString.replace(/^var\s+data\s*=\s*/, "");
-              
-              // BOM ve diğer görünmeyen karakterleri temizle
-              jsonString = jsonString.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, "");
-              
-              // Başta ve sonda geçersiz karakterleri temizle
-              jsonString = jsonString.replace(/^[^[{]+/, "").replace(/[^}\]]+$/, "");
-              
-              // Boşlukları temizle
-              jsonString = jsonString.trim();
-              
-              // JSON formatını düzelt
-              jsonString = jsonString.replace(/\}\s*,\s*\{/g, "},{");
-              jsonString = jsonString.replace(/\}\s*\]/g, "}]");
-              jsonString = jsonString.replace(/\[\s*\{/g, "[{");
-              
-              // Eksik kapanış parantezlerini ekle
-              if (!jsonString.endsWith("}]")) {
-                jsonString = jsonString + "}]";
-              }
-              
-              // Eksik açılış parantezlerini ekle
-              if (!jsonString.startsWith("{")) {
-                jsonString = "{" + jsonString;
-              }
-              
-              // HTML etiketlerini temizle
-              jsonString = jsonString.replace(/<[^>]*>/g, "");
-              
-              // Özel karakterleri düzelt
-              jsonString = jsonString.replace(/&quot;/g, '"')
-                                   .replace(/&amp;/g, '&')
-                                   .replace(/&lt;/g, '<')
-                                   .replace(/&gt;/g, '>')
-                                   .replace(/&nbsp;/g, ' ')
-                                   .replace(/&uuml;/g, 'ü')
-                                   .replace(/&Uuml;/g, 'Ü')
-                                   .replace(/&ouml;/g, 'ö')
-                                   .replace(/&Ouml;/g, 'Ö')
-                                   .replace(/&ccedil;/g, 'ç')
-                                   .replace(/&Ccedil;/g, 'Ç')
-                                   .replace(/&scedil;/g, 'ş')
-                                   .replace(/&Scedil;/g, 'Ş')
-                                   .replace(/&igrave;/g, 'ı')
-                                   .replace(/&Igrave;/g, 'İ')
-                                   .replace(/&gbreve;/g, 'ğ')
-                                   .replace(/&Gbreve;/g, 'Ğ');
-              
-              // Sayısal değerleri string'e çevir
-              jsonString = jsonString.replace(/:(\d+)([,}])/g, ':"$1"$2');
-              
-              // Tarih formatını düzelt
-              jsonString = jsonString.replace(/"tarih":\s*"(\d{2})\.(\d{2})\.(\d{4})"/g, '"tarih":"$1.$2.$3"');
-              
-              // Türkçe karakterleri düzelt
-              jsonString = jsonString.replace(/\\u00fc/g, "ü")
-                                   .replace(/\\u0131/g, "ı")
-                                   .replace(/\\u011f/g, "ğ")
-                                   .replace(/\\u015f/g, "ş")
-                                   .replace(/\\u00e7/g, "ç")
-                                   .replace(/\\u00f6/g, "ö");
-              
-              // JSON'u parse et
-              console.log("JSON parse ediliyor...");
-              let jsonData;
-              try {
-                jsonData = JSON.parse(jsonString);
-              } catch (parseError) {
-                console.error("JSON parse hatasi:", parseError.message);
-                console.error("Hata konumu:", parseError.position);
-                console.error("Hata satiri:", jsonString.substring(parseError.position - 50, parseError.position + 50));
-                throw parseError;
+              // Ham veriyi UTF-8'e çevir
+              let rawData = iconv.decode(response.data, "windows-1254");
+              console.log("Ham veri (ilk 200 karakter):", rawData.substring(0, 200));
+
+              // JavaScript değişken tanımını ve gereksiz karakterleri temizle
+              rawData = rawData.replace(/^[\ufeff\ufffd\u00ff\u015f]*var\s+data\s*=\s*/, "");
+              rawData = rawData.trim();
+
+              // Haberler dizisini bul
+              const haberlerMatch = rawData.match(/\{"haberler"\s*:\s*\[(.*)\]\s*\}/s);
+              if (!haberlerMatch) {
+                throw new Error("Haberler dizisi bulunamadi");
               }
 
-              let newsList = [];
-              let latestNewsId = 100667942;
+              // Her bir haberi ayrı ayrı işle
+              const haberlerString = haberlerMatch[1].trim();
+              const haberlerArray = [];
+              let currentHaber = "";
+              let bracketCount = 0;
 
-              console.log("JSON formati kontrol ediliyor...");
-              if (jsonData && jsonData.haberler && Array.isArray(jsonData.haberler)) {
-                console.log("JSON nesne icinde dizi formatinda, isleniyor...");
-                newsList = jsonData.haberler.map((item, index) => {
-                  const newsId = latestNewsId + (jsonData.haberler.length - 1) - index;
-                  return {
-                    kategoriadi: item.kategoriadi?.toString() ?? "",
-                    haberresim: item.haberresim?.toString() ?? "",
-                    haberbaslik: item.haberbaslik?.toString() ?? "",
-                    haberkisa: item.haberkisa?.toString() ?? "",
-                    tarih: item.tarih?.toString() ?? "",
-                    okunma: item.okunma?.toString() ?? "",
-                    detay_url: "https://www.karabuk.bel.tr/haber.asp?id=" + newsId
-                  };
-                });
-              } else {
-                console.error("Hata: JSON formati beklenenden farkli. JSON icerigi:", JSON.stringify(jsonData, null, 2));
-                throw new Error("JSON formati beklenenden farkli");
+              for (let i = 0; i < haberlerString.length; i++) {
+                const char = haberlerString[i];
+                currentHaber += char;
+
+                if (char === '{') bracketCount++;
+                if (char === '}') bracketCount--;
+
+                if (bracketCount === 0 && currentHaber.trim()) {
+                  try {
+                    // Her bir haberi temizle ve parse et
+                    let haber = currentHaber.trim().replace(/^,/, "").replace(/,$/, "");
+                    haber = haber.replace(/&quot;/g, '"')
+                                .replace(/&amp;/g, '&')
+                                .replace(/&lt;/g, '<')
+                                .replace(/&gt;/g, '>')
+                                .replace(/&nbsp;/g, ' ')
+                                .replace(/\\u00fc/g, 'ü')
+                                .replace(/\\u0131/g, 'ı')
+                                .replace(/\\u011f/g, 'ğ')
+                                .replace(/\\u015f/g, 'ş')
+                                .replace(/\\u00e7/g, 'ç')
+                                .replace(/\\u00f6/g, 'ö');
+
+                    const haberObj = JSON.parse(haber);
+                    haberlerArray.push({
+                      kategoriadi: haberObj.kategoriadi?.toString() ?? "",
+                      haberresim: haberObj.haberresim?.toString() ?? "",
+                      haberbaslik: haberObj.haberbaslik?.toString() ?? "",
+                      haberkisa: haberObj.haberkisa?.toString() ?? "",
+                      tarih: haberObj.tarih?.toString() ?? "",
+                      okunma: haberObj.okunma?.toString() ?? "",
+                      detay_url: `https://www.karabuk.bel.tr/haber.asp?id=${100667942 - haberlerArray.length}`
+                    });
+                    currentHaber = "";
+                  } catch (parseError) {
+                    console.error("Haber parse hatasi:", parseError.message);
+                    console.error("Hatali haber:", currentHaber);
+                  }
+                }
               }
 
-              console.log("Mevcut JSON dosyasi okunuyor...");
+              if (haberlerArray.length === 0) {
+                throw new Error("Hic haber parse edilemedi");
+              }
+
+              console.log(`${haberlerArray.length} haber basariyla parse edildi`);
+
+              // Mevcut dosyayı kontrol et
               let existingData = [];
               try {
                 const existingContent = await fs.readFile("data-haberler.json", "utf8");
                 existingData = JSON.parse(existingContent);
               } catch (err) {
-                console.log("Mevcut dosya okunamadi, yeni dosya olusturulacak:", err.message);
+                console.log("Mevcut dosya okunamadi, yeni dosya olusturulacak");
               }
 
-              const isChanged = JSON.stringify(existingData) !== JSON.stringify(newsList);
-              console.log("Degisiklik kontrolu:", isChanged ? "Degisiklik var" : "Degisiklik yok");
-
+              // Değişiklik varsa kaydet
+              const isChanged = JSON.stringify(existingData) !== JSON.stringify(haberlerArray);
               if (isChanged) {
-                console.log("JSON dosyasi yaziliyor...");
-                await fs.writeFile("data-haberler.json", JSON.stringify(newsList, null, 2));
-                console.log("JSON dosyasi guncellendi:", newsList.length, "haber");
+                await fs.writeFile("data-haberler.json", JSON.stringify(haberlerArray, null, 2));
+                console.log("JSON dosyasi guncellendi");
               } else {
-                console.log("Degisiklik olmadigi icin dosya guncellenmedi.");
+                console.log("Degisiklik yok");
               }
+
             } catch (error) {
               console.error("Hata:", error.message);
               if (error.response) {
