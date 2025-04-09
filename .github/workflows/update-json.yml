@@ -64,6 +64,21 @@ jobs:
               // Boşlukları temizle
               jsonString = jsonString.trim();
               
+              // JSON formatını düzelt
+              jsonString = jsonString.replace(/\}\s*,\s*\{/g, "},{");
+              jsonString = jsonString.replace(/\}\s*\]/g, "}]");
+              jsonString = jsonString.replace(/\[\s*\{/g, "[{");
+              
+              // Eksik kapanış parantezlerini ekle
+              if (!jsonString.endsWith("}]")) {
+                jsonString = jsonString + "}]";
+              }
+              
+              // Eksik açılış parantezlerini ekle
+              if (!jsonString.startsWith("{")) {
+                jsonString = "{" + jsonString;
+              }
+              
               // HTML etiketlerini temizle
               jsonString = jsonString.replace(/<[^>]*>/g, "");
               
