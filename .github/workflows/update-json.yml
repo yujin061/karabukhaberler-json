@@ -29,96 +29,59 @@ jobs:
 
           (async () => {
             try {
-              console.log("JSON dosyasi cekiliyor...");
+              console.log("JSON dosyası çekiliyor...");
               const response = await axios.get("https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json", {
                 headers: {
-                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                  "Accept": "application/json, text/plain, */*",
-                  "Referer": "https://www.karabuk.bel.tr/",
-                  "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-                  "Connection": "keep-alive",
-                  "Cache-Control": "no-cache"
+                  "User-Agent": "Mozilla/5.0",
+                  "Accept": "application/json",
                 },
-                responseEncoding: "utf8", // Kodlamayı UTF-8 olarak zorla
+                responseEncoding: "utf8",
                 timeout: 10000
               });
 
-              console.log("Yanit alindi. Status Code:", response.status);
               let jsonData = response.data;
               let jsonString = jsonData.toString();
 
-              // BOM karakterini ve diğer geçersiz karakterleri temizle
-              console.log("JSON string temizleniyor...");
-              jsonString = jsonString.replace(/^\uFEFF/, ""); // BOM karakterini kaldır
-              jsonString = jsonString.replace("var data =", "").trim();
+              // BOM karakterini ve "var data =" kısmını temizle
+              jsonString = jsonString.replace(/^\uFEFF/, "").replace("var data =", "").trim();
 
-              // JSON'u parse etmeden önce string'in geçerli olduğunu kontrol et
-              console.log("JSON string (ilk 100 karakter):", jsonString.substring(0, 100));
+              // JSON’u parse et
               console.log("JSON parse ediliyor...");
               jsonData = JSON.parse(jsonString);
 
+              // Haberler dizisini al ve formatla
               let newsList = [];
-              let latestNewsId = 100667939;
+              let latestNewsId = 100667942; // Geçici olarak sabit ID
 
-              console.log("JSON formati kontrol ediliyor...");
-              if (Array.isArray(jsonData)) {
-                console.log("JSON bir dizi formatinda, isleniyor...");
-                newsList = jsonData.map((item, index) => {
-                  const newsId = latestNewsId + (jsonData.length - 1) - index;
-                  return {
-                    haberbaslik: item.haberbaslik?.toString() ?? "",
-                    haberkisa: item.haberkisa?.toString() ?? "",
-                    tarih: item.tarih?.toString() ?? "",
-                    kategoriadi: item.kategoriadi?.toString() ?? "",
-                    okunma: item.okunma?.toString() ?? "",
-                    haberresim: item.haberresim?.toString() ?? "",
-                    detay_url: item.detay_url?.toString() || "https://www.karabuk.bel.tr/haber.asp?id=" + newsId
-                  };
-                });
-              } else if (jsonData && typeof jsonData === "object" && Array.isArray(jsonData.haberler)) {
-                console.log("JSON nesne icinde dizi formatinda, isleniyor...");
+              if (jsonData && jsonData.haberler && Array.isArray(jsonData.haberler)) {
                 newsList = jsonData.haberler.map((item, index) => {
                   const newsId = latestNewsId + (jsonData.haberler.length - 1) - index;
                   return {
-                    haberbaslik: item.haberbaslik?.toString() ?? "",
-                    haberkisa: item.haberkisa?.toString() ?? "",
-                    tarih: item.tarih?.toString() ?? "",
-                    kategoriadi: item.kategoriadi?.toString() ?? "",
-                    okunma: item.okunma?.toString() ?? "",
-                    haberresim: item.haberresim?.toString() ?? "",
-                    detay_url: item.detay_url?.toString() || "https://www.karabuk.bel.tr/haber.asp?id=" + newsId
+                    haberbaslik: item.haberbaslik || "",
+                    haberkisa: item.haberkisa || "",
+                    tarih: item.tarih || "",
+                    kategoriadi: item.kategoriadi || "",
+                    haberresim: item.haberresim || "",
+                    detay_url: "https://www.karabuk.bel.tr/haber.asp?id=" + newsId
                   };
                 });
               } else {
-                console.error("Hata: JSON formati beklenenden farkli. JSON icerigi:", JSON.stringify(jsonData, null, 2));
-                throw new Error("JSON formati beklenenden farkli");
+                throw new Error("JSON formatı beklenenden farklı");
               }
 
-              console.log("Mevcut JSON dosyasi okunuyor...");
-              let existingData = [];
-              try {
-                const existingContent = await fs.readFile("data-haberler.json", "utf8");
-                existingData = JSON.parse(existingContent);
-              } catch (err) {
-                console.log("Mevcut dosya okunamadi, yeni dosya olusturulacak:", err.message);
-              }
-
+              // Mevcut dosyayı güncelle
+              const existingContent = await fs.readFile("data-haberler.json", "utf8").catch(() => "[]");
+              const existingData = JSON.parse(existingContent);
               const isChanged = JSON.stringify(existingData) !== JSON.stringify(newsList);
-              console.log("Degisiklik kontrolu:", isChanged ? "Degisiklik var" : "Degisiklik yok");
 
               if (isChanged) {
-                console.log("JSON dosyasi yaziliyor...");
                 await fs.writeFile("data-haberler.json", JSON.stringify(newsList, null, 2));
-                console.log("JSON dosyasi guncellendi:", newsList.length, "haber");
+                console.log("JSON dosyası güncellendi:", newsList.length, "haber");
               } else {
-                console.log("Degisiklik olmadigi icin dosya guncellenmedi.");
+                console.log("Değişiklik yok.");
               }
             } catch (error) {
               console.error("Hata:", error.message);
-              if (error.response) {
-                console.error("Yanit Status Code:", error.response.status);
-                console.error("Yanit Data:", error.response.data);
-              }
               process.exit(1);
             }
           })();
