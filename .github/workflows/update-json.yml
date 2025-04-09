@@ -44,18 +44,28 @@ jobs:
               });
 
               console.log("Yanit alindi. Status Code:", response.status);
-              console.log("Yanit tipi:", typeof response.data);
-              console.log("Yanit uzunlugu:", response.data.length);
-              console.log("Ilk 100 karakter:", response.data.substring(0, 100));
-
+              
+              // Yanıtı temizle
               let jsonString = response.data;
+              
+              // JavaScript değişken tanımını kaldır
+              jsonString = jsonString.replace(/^var\s+data\s*=\s*/, "");
+              
+              // BOM karakterini temizle
               jsonString = jsonString.replace(/^\uFEFF/, "");
-              jsonString = jsonString.replace("var data =", "").trim();
+              
+              // Başta ve sonda geçersiz karakterleri temizle
               jsonString = jsonString.replace(/^[^[{]+/, "").replace(/[^}\]]+$/, "");
+              
+              // Boşlukları temizle
               jsonString = jsonString.trim();
+              
+              // Virgül hatalarını düzelt
+              jsonString = jsonString.replace(/,(\s*[}\]])/g, "$1");
               
               console.log("Temizlenmis JSON (ilk 100 karakter):", jsonString.substring(0, 100));
 
+              // JSON'u parse et
               console.log("JSON parse ediliyor...");
               let jsonData;
               try {
