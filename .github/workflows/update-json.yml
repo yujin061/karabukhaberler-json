@@ -1,61 +1,115 @@
-- name: Fetch and update JSON
-  run: |
-    node -e "
-    const axios = require('axios');
-    const fs = require('fs').promises;
+name: Update JSON File
 
-    (async () => {
-      try {
-        const response = await axios.get('https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json', {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*',
-            'Referer': 'https://www.karabuk.bel.tr/',
-            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Connection': 'keep-alive'
-          }
-        });
-        let jsonData = response.data;
-        let jsonString = jsonData.toString();
-        jsonString = jsonString.replace('var data =', '');
-        jsonData = JSON.parse(jsonString);
+on:
+  schedule:
+    - cron: '0 * * * *' # Her saat başı çalışır
+  workflow_dispatch: # Manuel çalıştırma için
 
-        let newsList = [];
-        if (Array.isArray(jsonData)) {
-          let latestNewsId = 100667939;
-          newsList = jsonData.map((item, index) => {
-            const newsId = latestNewsId - index;
-            return {
-              haberbaslik: item.haberbaslik?.toString() ?? '',
-              haberkisa: item.haberkisa?.toString() ?? '',
-              tarih: item.tarih?.toString() ?? '',
-              kategoriadi: item.kategoriadi?.toString() ?? '',
-              okunma: item.okunma?.toString() ?? '',
-              haberresim: item.haberresim?.toString() ?? '',
-              detay_url: item.detay_url?.toString() || `https://www.karabuk.bel.tr/haber.asp?id=${newsId}`
-            };
-          });
-        } else if (jsonData.haberler && Array.isArray(jsonData.haberler)) {
-          let latestNewsId = 100667939;
-          newsList = jsonData.haberler.map((item, index) => {
-            const newsId = latestNewsId - index;
-            return {
-              haberbaslik: item.haberbaslik?.toString() ?? '',
-              haberkisa: item.haberkisa?.toString() ?? '',
-              tarih: item.tarih?.toString() ?? '',
-              kategoriadi: item.kategoriadi?.toString() ?? '',
-              okunma: item.okunma?.toString() ?? '',
-              haberresim: item.haberresim?.toString() ?? '',
-              detay_url: item.detay_url?.toString() || `https://www.karabuk.bel.tr/haber.asp?id=${newsId}`
-            };
-          });
-        } else {
-          throw new Error('JSON formatı beklenenden farklı');
-        }
+jobs:
+  update-json:
+    runs-on: ubuntu-latest
 
-        await fs.writeFile('data-haberler.json', JSON.stringify(newsList, null, 2));
-      } catch (error) {
-        console.error('Hata:', error.message);
-        process.exit(1);
-      }
-    })"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+
+      - name: Install dependencies
+        run: npm install axios
+
+      - name: Fetch and update JSON
+        run: |
+          node -e "
+          const axios = require('axios');
+          const fs = require('fs').promises;
+
+          (async () => {
+            try {
+              console.log('JSON dosyası çekiliyor...');
+              const response = await axios.get('https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json', {
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                  'Accept': 'application/json, text/plain, */*',
+                  'Referer': 'https://www.karabuk.bel.tr/',
+                  'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+                  'Connection': 'keep-alive',
+                  'Cache-Control': 'no-cache'
+                },
+                timeout: 10000 // 10 saniye timeout
+              });
+
+              console.log('Yanıt alındı. Status Code:', response.status);
+              let jsonData = response.data;
+              let jsonString = jsonData.toString();
+
+              // `var data =` ifadesini kaldır
+              console.log('JSON string temizleniyor...');
+              jsonString = jsonString.replace('var data =', '').trim();
+
+              // JSON'u parse et
+              console.log('JSON parse ediliyor...');
+              jsonData = JSON.parse(jsonString);
+
+              // JSON formatını kontrol et ve düzelt
+              let newsList = [];
+              let latestNewsId = 100667939; // En son haberin ID'si (geçici olarak sabit)
+
+              console.log('JSON formatı kontrol ediliyor...');
+              if (Array.isArray(jsonData)) {
+                console.log('JSON bir dizi formatında, işleniyor...');
+                newsList = jsonData.map((item, index) => {
+                  const newsId = latestNewsId + (jsonData.length - 1) - index; // En yeni haberin ID'sini artırarak başla
+                  return {
+                    haberbaslik: item.haberbaslik?.toString() ?? '',
+                    haberkisa: item.haberkisa?.toString() ?? '',
+                    tarih: item.tarih?.toString() ?? '',
+                    kategoriadi: item.kategoriadi?.toString() ?? '',
+                    okunma: item.okunma?.toString() ?? '',
+                    haberresim: item.haberresim?.toString() ?? '',
+                    detay_url: item.detay_url?.toString() || `https://www.karabuk.bel.tr/haber.asp?id=${newsId}`
+                  };
+                });
+              } else if (jsonData && typeof jsonData === 'object' && Array.isArray(jsonData.haberler)) {
+                console.log('JSON nesne içinde dizi formatında, işleniyor...');
+                newsList = jsonData.haberler.map((item, index) => {
+                  const newsId = latestNewsId + (jsonData.haberler.length - 1) - index;
+                  return {
+                    haberbaslik: item.haberbaslik?.toString() ?? '',
+                    haberkisa: item.haberkisa?.toString() ?? '',
+                    tarih: item.tarih?.toString() ?? '',
+                    kategoriadi: item.kategoriadi?.toString() ?? '',
+                    okunma: item.okunma?.toString() ?? '',
+                    haberresim: item.haberresim?.toString() ?? '',
+                    detay_url: item.detay_url?.toString() || `https://www.karabuk.bel.tr/haber.asp?id=${newsId}`
+                  };
+                });
+              } else {
+                console.error('Hata: JSON formatı beklenenden farklı. JSON içeriği:', JSON.stringify(jsonData, null, 2));
+                throw new Error('JSON formatı beklenenden farklı');
+              }
+
+              // Düzeltilmiş JSON'u dosyaya yaz
+              console.log('JSON dosyası yazılıyor...');
+              await fs.writeFile('data-haberler.json', JSON.stringify(newsList, null, 2));
+              console.log('JSON dosyası güncellendi:', newsList.length, 'haber');
+            } catch (error) {
+              console.error('Hata:', error.message);
+              if (error.response) {
+                console.error('Yanıt Status Code:', error.response.status);
+                console.error('Yanıt Data:', error.response.data);
+              }
+              process.exit(1);
+            }
+          })"
+
+      - name: Commit changes
+        run: |
+          git config --global user.name 'GitHub Action'
+          git config --global user.email 'action@github.com'
+          git add data-haberler.json
+          git commit -m 'JSON dosyası güncellendi' || echo "Değişiklik yok"
+          git push
