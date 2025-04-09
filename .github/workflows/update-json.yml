@@ -23,7 +23,7 @@ jobs:
 
       - name: Fetch and update JSON
         run: |
-          node -e '
+          node << 'EOF'
           const axios = require("axios");
           const fs = require("fs").promises;
 
@@ -39,7 +39,7 @@ jobs:
                   "Connection": "keep-alive",
                   "Cache-Control": "no-cache"
                 },
-                responseType: "text", // Yanıtı text olarak al
+                responseType: "text",
                 timeout: 10000
               });
 
@@ -48,24 +48,14 @@ jobs:
               console.log("Yanit uzunlugu:", response.data.length);
               console.log("Ilk 100 karakter:", response.data.substring(0, 100));
 
-              // Yanıtı temizle
               let jsonString = response.data;
-              
-              // BOM karakterini temizle
               jsonString = jsonString.replace(/^\uFEFF/, "");
-              
-              // "var data =" kısmını kaldır
               jsonString = jsonString.replace("var data =", "").trim();
-              
-              // JSON string'in başında ve sonunda geçersiz karakterleri temizle
               jsonString = jsonString.replace(/^[^[{]+/, "").replace(/[^}\]]+$/, "");
-              
-              // Boşlukları temizle
               jsonString = jsonString.trim();
               
               console.log("Temizlenmis JSON (ilk 100 karakter):", jsonString.substring(0, 100));
 
-              // JSON'u parse et
               console.log("JSON parse ediliyor...");
               let jsonData;
               try {
@@ -77,9 +67,8 @@ jobs:
                 throw parseError;
               }
 
-              // Haberler dizisini al ve formatla
               let newsList = [];
-              let latestNewsId = 100667942; // Geçici olarak sabit ID
+              let latestNewsId = 100667942;
 
               console.log("JSON formati kontrol ediliyor...");
               if (jsonData && jsonData.haberler && Array.isArray(jsonData.haberler)) {
@@ -101,7 +90,6 @@ jobs:
                 throw new Error("JSON formati beklenenden farkli");
               }
 
-              // Mevcut dosyayı oku ve karşılaştır
               console.log("Mevcut JSON dosyasi okunuyor...");
               let existingData = [];
               try {
@@ -130,7 +118,7 @@ jobs:
               process.exit(1);
             }
           })();
-          '
+          EOF
 
       - name: Commit changes
         run: |
