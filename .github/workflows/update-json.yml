@@ -64,82 +64,43 @@ jobs:
               // Boşlukları temizle
               jsonString = jsonString.trim();
               
-              // JSON'u parçalara ayır
-              const parts = jsonString.split(/({[^}]*})/g);
-              let fixedParts = [];
-              let currentObject = "";
-              let bracketCount = 0;
+              // HTML etiketlerini temizle
+              jsonString = jsonString.replace(/<[^>]*>/g, "");
               
-              for (let i = 0; i < parts.length; i++) {
-                let part = parts[i];
-                if (part.startsWith("{")) {
-                  bracketCount = (part.match(/{/g) || []).length - (part.match(/}/g) || []).length;
-                  currentObject = part;
-                  
-                  if (bracketCount === 0) {
-                    // Tam bir nesne bulundu
-                    try {
-                      // Önce temel düzeltmeleri yap
-                      currentObject = currentObject.replace(/,(\s*[}\]])/g, "$1");
-                      currentObject = currentObject.replace(/:(\d+)([,}])/g, ':"$1"$2');
-                      currentObject = currentObject.replace(/"tarih":\s*"(\d{2})\.(\d{2})\.(\d{4})"/g, '"tarih":"$1.$2.$3"');
-                      
-                      // Türkçe karakterleri düzelt
-                      currentObject = currentObject.replace(/\\u00fc/g, "ü");
-                      currentObject = currentObject.replace(/\\u0131/g, "ı");
-                      currentObject = currentObject.replace(/\\u011f/g, "ğ");
-                      currentObject = currentObject.replace(/\\u015f/g, "ş");
-                      currentObject = currentObject.replace(/\\u00e7/g, "ç");
-                      currentObject = currentObject.replace(/\\u00f6/g, "ö");
-                      
-                      // JSON'u parse et ve tekrar string'e çevir
-                      const parsed = JSON.parse(currentObject);
-                      fixedParts.push(JSON.stringify(parsed));
-                      currentObject = "";
-                    } catch (e) {
-                      console.error("Parça düzeltme hatası:", e.message);
-                      console.error("Hatalı parça:", currentObject);
-                      throw e;
-                    }
-                  }
-                } else if (currentObject) {
-                  currentObject += part;
-                  bracketCount += (part.match(/{/g) || []).length - (part.match(/}/g) || []).length;
-                  
-                  if (bracketCount === 0) {
-                    try {
-                      // Önce temel düzeltmeleri yap
-                      currentObject = currentObject.replace(/,(\s*[}\]])/g, "$1");
-                      currentObject = currentObject.replace(/:(\d+)([,}])/g, ':"$1"$2');
-                      currentObject = currentObject.replace(/"tarih":\s*"(\d{2})\.(\d{2})\.(\d{4})"/g, '"tarih":"$1.$2.$3"');
-                      
-                      // Türkçe karakterleri düzelt
-                      currentObject = currentObject.replace(/\\u00fc/g, "ü");
-                      currentObject = currentObject.replace(/\\u0131/g, "ı");
-                      currentObject = currentObject.replace(/\\u011f/g, "ğ");
-                      currentObject = currentObject.replace(/\\u015f/g, "ş");
-                      currentObject = currentObject.replace(/\\u00e7/g, "ç");
-                      currentObject = currentObject.replace(/\\u00f6/g, "ö");
-                      
-                      // JSON'u parse et ve tekrar string'e çevir
-                      const parsed = JSON.parse(currentObject);
-                      fixedParts.push(JSON.stringify(parsed));
-                      currentObject = "";
-                    } catch (e) {
-                      console.error("Parça düzeltme hatası:", e.message);
-                      console.error("Hatalı parça:", currentObject);
-                      throw e;
-                    }
-                  }
-                } else {
-                  fixedParts.push(part);
-                }
-              }
+              // Özel karakterleri düzelt
+              jsonString = jsonString.replace(/&quot;/g, '"')
+                                   .replace(/&amp;/g, '&')
+                                   .replace(/&lt;/g, '<')
+                                   .replace(/&gt;/g, '>')
+                                   .replace(/&nbsp;/g, ' ')
+                                   .replace(/&uuml;/g, 'ü')
+                                   .replace(/&Uuml;/g, 'Ü')
+                                   .replace(/&ouml;/g, 'ö')
+                                   .replace(/&Ouml;/g, 'Ö')
+                                   .replace(/&ccedil;/g, 'ç')
+                                   .replace(/&Ccedil;/g, 'Ç')
+                                   .replace(/&scedil;/g, 'ş')
+                                   .replace(/&Scedil;/g, 'Ş')
+                                   .replace(/&igrave;/g, 'ı')
+                                   .replace(/&Igrave;/g, 'İ')
+                                   .replace(/&gbreve;/g, 'ğ')
+                                   .replace(/&Gbreve;/g, 'Ğ');
               
-              // Düzeltilmiş parçaları birleştir
-              jsonString = fixedParts.join("");
+              // Sayısal değerleri string'e çevir
+              jsonString = jsonString.replace(/:(\d+)([,}])/g, ':"$1"$2');
               
-              // Son bir JSON parse denemesi
+              // Tarih formatını düzelt
+              jsonString = jsonString.replace(/"tarih":\s*"(\d{2})\.(\d{2})\.(\d{4})"/g, '"tarih":"$1.$2.$3"');
+              
+              // Türkçe karakterleri düzelt
+              jsonString = jsonString.replace(/\\u00fc/g, "ü")
+                                   .replace(/\\u0131/g, "ı")
+                                   .replace(/\\u011f/g, "ğ")
+                                   .replace(/\\u015f/g, "ş")
+                                   .replace(/\\u00e7/g, "ç")
+                                   .replace(/\\u00f6/g, "ö");
+              
+              // JSON'u parse et
               console.log("JSON parse ediliyor...");
               let jsonData;
               try {
