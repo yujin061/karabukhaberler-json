@@ -49,6 +49,9 @@ jobs:
               // Yanıtı UTF-8'e çevir
               let jsonString = iconv.decode(response.data, "windows-1254");
               
+              // Ham veriyi logla
+              console.log("Ham veri (ilk 200 karakter):", jsonString.substring(0, 200));
+              
               // JavaScript değişken tanımını kaldır
               jsonString = jsonString.replace(/^var\s+data\s*=\s*/, "");
               
@@ -84,24 +87,24 @@ jobs:
               jsonString = jsonString.replace(/\\u00e7/g, "ç");
               jsonString = jsonString.replace(/\\u00f6/g, "ö");
               
-              // Sayısal değerleri kontrol et ve düzelt
-              const fixNumericValues = (str) => {
-                return str.replace(/:(\d+)([,}])/g, (match, number, end) => {
-                  return `:"${number}"${end}`;
-                });
-              };
-              
               // JSON'u parçalara ayır ve her parçayı düzelt
               const parts = jsonString.split(/({[^}]*})/g);
               jsonString = parts.map(part => {
                 if (part.startsWith("{") && part.endsWith("}")) {
-                  return fixNumericValues(part);
+                  // Sayısal değerleri string'e çevir
+                  return part.replace(/:(\d+)([,}])/g, (match, number, end) => {
+                    return `:"${number}"${end}`;
+                  });
                 }
                 return part;
               }).join("");
               
-              console.log("Temizlenmis JSON (ilk 100 karakter):", jsonString.substring(0, 100));
-              console.log("Hata konumundaki JSON:", jsonString.substring(586, 596));
+              // Hata konumundaki veriyi detaylı incele
+              const errorPosition = 591;
+              console.log("Hata konumundaki detayli inceleme:");
+              console.log("Önceki 50 karakter:", jsonString.substring(errorPosition - 50, errorPosition));
+              console.log("Hata konumu:", jsonString.substring(errorPosition, errorPosition + 10));
+              console.log("Sonraki 50 karakter:", jsonString.substring(errorPosition + 10, errorPosition + 60));
 
               // JSON'u parse et
               console.log("JSON parse ediliyor...");
