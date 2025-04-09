@@ -52,13 +52,14 @@ jobs:
               // Ham veriyi logla
               console.log("Ham veri (ilk 200 karakter):", jsonString.substring(0, 200));
               
-              // JavaScript değişken tanımını kaldır ve sadece haberler dizisini al
+              // JavaScript değişken tanımını kaldır
               jsonString = jsonString.replace(/^var\s+data\s*=\s*/, "");
-              jsonString = jsonString.replace(/^[^{]*{/, "{");
-              jsonString = jsonString.replace(/}$/, "");
               
               // BOM ve diğer görünmeyen karakterleri temizle
               jsonString = jsonString.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, "");
+              
+              // Başta ve sonda geçersiz karakterleri temizle
+              jsonString = jsonString.replace(/^[^[{]+/, "").replace(/[^}\]]+$/, "");
               
               // Boşlukları temizle
               jsonString = jsonString.trim();
@@ -67,6 +68,16 @@ jobs:
               jsonString = jsonString.replace(/\}\s*,\s*\{/g, "},{");
               jsonString = jsonString.replace(/\}\s*\]/g, "}]");
               jsonString = jsonString.replace(/\[\s*\{/g, "[{");
+              
+              // Eksik kapanış parantezlerini ekle
+              if (!jsonString.endsWith("}]")) {
+                jsonString = jsonString + "}]";
+              }
+              
+              // Eksik açılış parantezlerini ekle
+              if (!jsonString.startsWith("{")) {
+                jsonString = "{" + jsonString;
+              }
               
               // HTML etiketlerini temizle
               jsonString = jsonString.replace(/<[^>]*>/g, "");
