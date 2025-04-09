@@ -1,4 +1,4 @@
-name: Update JSON File
+ame: Update JSON File
 
 on:
   schedule:
@@ -68,7 +68,14 @@ jobs:
               jsonString = jsonString.replace(/\[\s*\{/g, "[{");
               jsonString = jsonString.replace(/\}\s*\]/g, "}]");
               
+              // Sayısal değerleri string'e çevir
+              jsonString = jsonString.replace(/:(\d+)([,}])/g, ':"$1"$2');
+              
+              // Tarih formatını düzelt
+              jsonString = jsonString.replace(/"tarih":\s*"(\d{2})\.(\d{2})\.(\d{4})"/g, '"tarih":"$1.$2.$3"');
+              
               console.log("Temizlenmis JSON (ilk 100 karakter):", jsonString.substring(0, 100));
+              console.log("Hata konumundaki JSON:", jsonString.substring(587, 597));
 
               // JSON'u parse et
               console.log("JSON parse ediliyor...");
