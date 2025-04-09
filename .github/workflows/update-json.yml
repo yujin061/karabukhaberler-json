@@ -26,6 +26,7 @@ jobs:
           node << 'EOF'
           const axios = require("axios");
           const fs = require("fs").promises;
+          const iconv = require('iconv-lite');
 
           (async () => {
             try {
@@ -39,14 +40,14 @@ jobs:
                   "Connection": "keep-alive",
                   "Cache-Control": "no-cache"
                 },
-                responseType: "text",
+                responseType: "arraybuffer",
                 timeout: 10000
               });
 
               console.log("Yanit alindi. Status Code:", response.status);
               
-              // Yanıtı temizle
-              let jsonString = response.data;
+              // Yanıtı UTF-8'e çevir
+              let jsonString = iconv.decode(response.data, 'windows-1254');
               
               // JavaScript değişken tanımını kaldır
               jsonString = jsonString.replace(/^var\s+data\s*=\s*/, "");
@@ -74,8 +75,16 @@ jobs:
               // Tarih formatını düzelt
               jsonString = jsonString.replace(/"tarih":\s*"(\d{2})\.(\d{2})\.(\d{4})"/g, '"tarih":"$1.$2.$3"');
               
+              // Türkçe karakterleri düzelt
+              jsonString = jsonString.replace(//g, "ü");
+              jsonString = jsonString.replace(//g, "ı");
+              jsonString = jsonString.replace(//g, "ğ");
+              jsonString = jsonString.replace(//g, "ş");
+              jsonString = jsonString.replace(//g, "ç");
+              jsonString = jsonString.replace(//g, "ö");
+              
               console.log("Temizlenmis JSON (ilk 100 karakter):", jsonString.substring(0, 100));
-              console.log("Hata konumundaki JSON:", jsonString.substring(587, 597));
+              console.log("Hata konumundaki JSON:", jsonString.substring(586, 596));
 
               // JSON'u parse et
               console.log("JSON parse ediliyor...");
@@ -141,6 +150,9 @@ jobs:
             }
           })();
           EOF
+
+      - name: Install iconv-lite
+        run: npm install iconv-lite
 
       - name: Commit changes
         run: |
