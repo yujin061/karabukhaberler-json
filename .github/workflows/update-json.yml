@@ -2,7 +2,7 @@ name: Update JSON File
 
 on:
   schedule:
-    - cron: '0 */3 * * *' # Her 3 saatte bir çalışır (örneğin, 00:00, 03:00, 06:00, ...)
+    - cron: '0 */3 * * *' # Her 3 saatte bir çalışır
   workflow_dispatch: # Manuel çalıştırma için
 
 jobs:
@@ -39,29 +39,43 @@ jobs:
                   "Connection": "keep-alive",
                   "Cache-Control": "no-cache"
                 },
-                responseType: "arraybuffer", // Yanıtı binary olarak al
+                responseType: "text", // Yanıtı text olarak al
                 timeout: 10000
               });
 
               console.log("Yanit alindi. Status Code:", response.status);
-              // Yanıtı UTF-8 string’e çevir ve BOM karakterini temizle
-              let jsonData = response.data;
-              let jsonString = Buffer.from(jsonData).toString("utf8");
-              jsonString = jsonString.replace(/^\uFEFF/, ""); // BOM karakterini kaldır
+              console.log("Yanit tipi:", typeof response.data);
+              console.log("Yanit uzunlugu:", response.data.length);
+              console.log("Ilk 100 karakter:", response.data.substring(0, 100));
 
-              // "var data =" kısmını kaldır ve string’i temizle
-              console.log("JSON string temizleniyor...");
+              // Yanıtı temizle
+              let jsonString = response.data;
+              
+              // BOM karakterini temizle
+              jsonString = jsonString.replace(/^\uFEFF/, "");
+              
+              // "var data =" kısmını kaldır
               jsonString = jsonString.replace("var data =", "").trim();
-
-              // JSON string’in başında ve sonunda geçersiz karakterleri temizle
+              
+              // JSON string'in başında ve sonunda geçersiz karakterleri temizle
               jsonString = jsonString.replace(/^[^[{]+/, "").replace(/[^}\]]+$/, "");
+              
+              // Boşlukları temizle
+              jsonString = jsonString.trim();
+              
+              console.log("Temizlenmis JSON (ilk 100 karakter):", jsonString.substring(0, 100));
 
-              // JSON string’in ilk 100 karakterini logla
-              console.log("JSON string (ilk 100 karakter):", jsonString.substring(0, 100));
-
-              // JSON’u parse et
+              // JSON'u parse et
               console.log("JSON parse ediliyor...");
-              jsonData = JSON.parse(jsonString);
+              let jsonData;
+              try {
+                jsonData = JSON.parse(jsonString);
+              } catch (parseError) {
+                console.error("JSON parse hatasi:", parseError.message);
+                console.error("Hata konumu:", parseError.position);
+                console.error("Hata satiri:", jsonString.substring(parseError.position - 50, parseError.position + 50));
+                throw parseError;
+              }
 
               // Haberler dizisini al ve formatla
               let newsList = [];
