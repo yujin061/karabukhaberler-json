@@ -39,6 +39,7 @@ jobs:
                   "Connection": "keep-alive",
                   "Cache-Control": "no-cache"
                 },
+                responseEncoding: "utf8", // Kodlamayı UTF-8 olarak zorla
                 timeout: 10000
               });
 
@@ -46,9 +47,13 @@ jobs:
               let jsonData = response.data;
               let jsonString = jsonData.toString();
 
+              // BOM karakterini ve diğer geçersiz karakterleri temizle
               console.log("JSON string temizleniyor...");
+              jsonString = jsonString.replace(/^\uFEFF/, ""); // BOM karakterini kaldır
               jsonString = jsonString.replace("var data =", "").trim();
 
+              // JSON'u parse etmeden önce string'in geçerli olduğunu kontrol et
+              console.log("JSON string (ilk 100 karakter):", jsonString.substring(0, 100));
               console.log("JSON parse ediliyor...");
               jsonData = JSON.parse(jsonString);
 
