@@ -46,17 +46,17 @@ jobs:
 
               console.log("Yanit alindi. Status Code:", response.status);
               
-              // Yanıtı UTF-8'e çevir
-              let jsonString = iconv.decode(response.data, "windows-1254");
+              // Yanıtı windows-1254’ten UTF-8’e çevir
+              let jsonString = iconv.decode(Buffer.from(response.data), "windows-1254");
+              
+              // BOM ve diğer görünmeyen karakterleri temizle
+              jsonString = jsonString.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, "");
               
               // Ham veriyi logla
               console.log("Ham veri (ilk 200 karakter):", jsonString.substring(0, 200));
               
               // JavaScript değişken tanımını kaldır
               jsonString = jsonString.replace(/^var\s+data\s*=\s*/, "");
-              
-              // BOM ve diğer görünmeyen karakterleri temizle
-              jsonString = jsonString.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, "");
               
               // Başta ve sonda geçersiz karakterleri temizle
               jsonString = jsonString.replace(/^[^[{]+/, "").replace(/[^}\]]+$/, "");
@@ -69,61 +69,37 @@ jobs:
               jsonString = jsonString.replace(/\}\s*\]/g, "}]");
               jsonString = jsonString.replace(/\[\s*\{/g, "[{");
               
-              // Eksik kapanış parantezlerini ekle
-              if (!jsonString.endsWith("}]")) {
-                jsonString = jsonString + "}]";
+              // Eksik parantezleri kontrol et ve ekle
+              let openBrackets = (jsonString.match(/\{/g) || []).length;
+              let closeBrackets = (jsonString.match(/\}/g) || []).length;
+              let openSquareBrackets = (jsonString.match(/\[/g) || []).length;
+              let closeSquareBrackets = (jsonString.match(/\]/g) || []).length;
+
+              while (openBrackets > closeBrackets) {
+                jsonString += "}";
+                closeBrackets++;
               }
-              
-              // Eksik açılış parantezlerini ekle
-              if (!jsonString.startsWith("{")) {
-                jsonString = "{" + jsonString;
+              while (openSquareBrackets > closeSquareBrackets) {
+                jsonString += "]";
+                closeSquareBrackets++;
               }
+
+              // JSON string’in tamamını logla (hata ayıklama için)
+              console.log("Temizlenmis JSON (ilk 500 karakter):", jsonString.substring(0, 500));
               
-              // HTML etiketlerini temizle
-              jsonString = jsonString.replace(/<[^>]*>/g, "");
-              
-              // Özel karakterleri düzelt
-              jsonString = jsonString.replace(/&quot;/g, '"')
-                                   .replace(/&amp;/g, '&')
-                                   .replace(/&lt;/g, '<')
-                                   .replace(/&gt;/g, '>')
-                                   .replace(/&nbsp;/g, ' ')
-                                   .replace(/&uuml;/g, 'ü')
-                                   .replace(/&Uuml;/g, 'Ü')
-                                   .replace(/&ouml;/g, 'ö')
-                                   .replace(/&Ouml;/g, 'Ö')
-                                   .replace(/&ccedil;/g, 'ç')
-                                   .replace(/&Ccedil;/g, 'Ç')
-                                   .replace(/&scedil;/g, 'ş')
-                                   .replace(/&Scedil;/g, 'Ş')
-                                   .replace(/&igrave;/g, 'ı')
-                                   .replace(/&Igrave;/g, 'İ')
-                                   .replace(/&gbreve;/g, 'ğ')
-                                   .replace(/&Gbreve;/g, 'Ğ');
-              
-              // Sayısal değerleri string'e çevir
-              jsonString = jsonString.replace(/:(\d+)([,}])/g, ':"$1"$2');
-              
-              // Tarih formatını düzelt
-              jsonString = jsonString.replace(/"tarih":\s*"(\d{2})\.(\d{2})\.(\d{4})"/g, '"tarih":"$1.$2.$3"');
-              
-              // Türkçe karakterleri düzelt
-              jsonString = jsonString.replace(/\\u00fc/g, "ü")
-                                   .replace(/\\u0131/g, "ı")
-                                   .replace(/\\u011f/g, "ğ")
-                                   .replace(/\\u015f/g, "ş")
-                                   .replace(/\\u00e7/g, "ç")
-                                   .replace(/\\u00f6/g, "ö");
-              
-              // JSON'u parse et
+              // JSON’u parse et
               console.log("JSON parse ediliyor...");
               let jsonData;
               try {
                 jsonData = JSON.parse(jsonString);
               } catch (parseError) {
                 console.error("JSON parse hatasi:", parseError.message);
-                console.error("Hata konumu:", parseError.position);
-                console.error("Hata satiri:", jsonString.substring(parseError.position - 50, parseError.position + 50));
+                // Hata konumunu ve çevresindeki veriyi logla
+                const errorPosition = parseError.message.match(/position (\d+)/)?.[1] || 0;
+                const start = Math.max(0, errorPosition - 50);
+                const end = errorPosition + 50;
+                console.error("Hata konumu (yaklaşık):", errorPosition);
+                console.error("Hata çevresi:", jsonString.substring(start, end));
                 throw parseError;
               }
 
