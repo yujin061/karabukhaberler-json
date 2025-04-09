@@ -72,13 +72,6 @@ jobs:
               jsonString = jsonString.replace(/\[\s*\{/g, "[{");
               jsonString = jsonString.replace(/\}\s*\]/g, "}]");
               
-              // Sayısal değerleri string'e çevir
-              jsonString = jsonString.replace(/:(\d+)([,}])/g, ':"$1"$2');
-              jsonString = jsonString.replace(/:(\d+\.\d+)([,}])/g, ':"$1"$2');
-              
-              // Tarih formatını düzelt
-              jsonString = jsonString.replace(/"tarih":\s*"(\d{2})\.(\d{2})\.(\d{4})"/g, '"tarih":"$1.$2.$3"');
-              
               // Türkçe karakterleri düzelt
               jsonString = jsonString.replace(/\\u00fc/g, "ü");
               jsonString = jsonString.replace(/\\u0131/g, "ı");
@@ -87,14 +80,22 @@ jobs:
               jsonString = jsonString.replace(/\\u00e7/g, "ç");
               jsonString = jsonString.replace(/\\u00f6/g, "ö");
               
+              // Sayısal değerleri string'e çevir
+              const fixNumericValues = (str) => {
+                return str.replace(/:(\d+)([,}])/g, (match, number, end) => {
+                  return `:"${number}"${end}`;
+                });
+              };
+              
               // JSON'u parçalara ayır ve her parçayı düzelt
               const parts = jsonString.split(/({[^}]*})/g);
               jsonString = parts.map(part => {
                 if (part.startsWith("{") && part.endsWith("}")) {
                   // Sayısal değerleri string'e çevir
-                  return part.replace(/:(\d+)([,}])/g, (match, number, end) => {
-                    return `:"${number}"${end}`;
-                  });
+                  let fixedPart = fixNumericValues(part);
+                  // Tarih formatını düzelt
+                  fixedPart = fixedPart.replace(/"tarih":\s*"(\d{2})\.(\d{2})\.(\d{4})"/g, '"tarih":"$1.$2.$3"');
+                  return fixedPart;
                 }
                 return part;
               }).join("");
