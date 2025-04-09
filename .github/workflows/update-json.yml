@@ -39,17 +39,18 @@ jobs:
                   "Connection": "keep-alive",
                   "Cache-Control": "no-cache"
                 },
-                responseEncoding: "utf8",
+                responseType: "arraybuffer", // Yanıtı binary olarak al
                 timeout: 10000
               });
 
               console.log("Yanit alindi. Status Code:", response.status);
+              // Yanıtı UTF-8 string’e çevir ve BOM karakterini temizle
               let jsonData = response.data;
-              let jsonString = jsonData.toString();
-
-              // BOM karakterini ve diğer geçersiz karakterleri temizle
-              console.log("JSON string temizleniyor...");
+              let jsonString = Buffer.from(jsonData).toString("utf8");
               jsonString = jsonString.replace(/^\uFEFF/, ""); // BOM karakterini kaldır
+
+              // "var data =" kısmını kaldır ve string’i temizle
+              console.log("JSON string temizleniyor...");
               jsonString = jsonString.replace("var data =", "").trim();
 
               // JSON string’in başında ve sonunda geçersiz karakterleri temizle
