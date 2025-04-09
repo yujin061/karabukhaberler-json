@@ -52,14 +52,13 @@ jobs:
               // Ham veriyi logla
               console.log("Ham veri (ilk 200 karakter):", jsonString.substring(0, 200));
               
-              // JavaScript değişken tanımını kaldır
+              // JavaScript değişken tanımını kaldır ve sadece haberler dizisini al
               jsonString = jsonString.replace(/^var\s+data\s*=\s*/, "");
+              jsonString = jsonString.replace(/^[^{]*{/, "{");
+              jsonString = jsonString.replace(/}$/, "");
               
               // BOM ve diğer görünmeyen karakterleri temizle
               jsonString = jsonString.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, "");
-              
-              // Başta ve sonda geçersiz karakterleri temizle
-              jsonString = jsonString.replace(/^[^[{]+/, "").replace(/[^}\]]+$/, "");
               
               // Boşlukları temizle
               jsonString = jsonString.trim();
@@ -68,16 +67,6 @@ jobs:
               jsonString = jsonString.replace(/\}\s*,\s*\{/g, "},{");
               jsonString = jsonString.replace(/\}\s*\]/g, "}]");
               jsonString = jsonString.replace(/\[\s*\{/g, "[{");
-              
-              // Eksik kapanış parantezlerini ekle
-              if (!jsonString.endsWith("}]")) {
-                jsonString = jsonString + "}]";
-              }
-              
-              // Eksik açılış parantezlerini ekle
-              if (!jsonString.startsWith("{")) {
-                jsonString = "{" + jsonString;
-              }
               
               // HTML etiketlerini temizle
               jsonString = jsonString.replace(/<[^>]*>/g, "");
@@ -136,12 +125,12 @@ jobs:
                 newsList = jsonData.haberler.map((item, index) => {
                   const newsId = latestNewsId + (jsonData.haberler.length - 1) - index;
                   return {
+                    kategoriadi: item.kategoriadi?.toString() ?? "",
+                    haberresim: item.haberresim?.toString() ?? "",
                     haberbaslik: item.haberbaslik?.toString() ?? "",
                     haberkisa: item.haberkisa?.toString() ?? "",
                     tarih: item.tarih?.toString() ?? "",
-                    kategoriadi: item.kategoriadi?.toString() ?? "",
                     okunma: item.okunma?.toString() ?? "",
-                    haberresim: item.haberresim?.toString() ?? "",
                     detay_url: "https://www.karabuk.bel.tr/haber.asp?id=" + newsId
                   };
                 });
