@@ -53,38 +53,37 @@ jobs:
               fs.writeFileSync("cleaned-data.txt", cleanedData);
               console.log("Temizlenmiş veri dosyası kaydedildi: cleaned-data.txt");
               
-              // JSON içindeki sorunlu karakterleri temizle
-              cleanedData = cleanedData
-                .replace(/[\u0000-\u001F\u007F-\u009F]/g, "") // Kontrol karakterlerini temizle
-                .replace(/\r\n|\n|\r/g, " ")                   // Satır sonlarını boşluklara dönüştür
-                .replace(/\\/g, "\\\\")                        // Ters eğik çizgileri kaçış karakteri olarak işaretle
-                .replace(/"\s+"/g, '" "')                      // Çift tırnak arasındaki fazla boşlukları temizle
-                .replace(/([^\\])"/g, '$1\\"')                 // Kaçış karakteri olmayan çift tırnakları kaçış karakteriyle işaretle
-                .replace(/^"/, '\\"')                          // Başlangıçtaki çift tırnağı kaçış karakteriyle işaretle
-                .replace(/([^\\])\\"/g, '$1"')                 // Düzeltme: Kaçış karakteriyle işaretlenmiş çift tırnakları geri al
-                .replace(/^\\"/, '"')                          // Düzeltme: Başlangıçtaki kaçış karakterli çift tırnağı geri al
-                .replace(/\\\\"/g, '\\"');                     // Düzeltme: Çift kaçış karakterli çift tırnakları düzelt
-              
-              // Düzeltilmiş veriyi kaydet
+              // Düzeltilmiş veriyi kaydet (JSON'u manuel olarak düzeltmek için)
               fs.writeFileSync("fixed-data.txt", cleanedData);
               console.log("Düzeltilmiş veri dosyası kaydedildi: fixed-data.txt");
               
               try {
-                // RegExp ile JSON yapısını çıkar
-                const jsonMatch = cleanedData.match(/\{[\s\S]*\}/);
-                if (!jsonMatch) {
-                  throw new Error("JSON yapısı bulunamadı");
+                console.log("Alternatif JSON düzeltme yöntemi deneniyor...");
+                
+                // JavaScript'in Function yapıcısını kullanarak veriyi güvenli bir şekilde değerlendir
+                const jsonStr = `
+                  try {
+                    const data = ${cleanedData};
+                    return JSON.stringify(data);
+                  } catch (e) {
+                    return JSON.stringify({ error: e.message });
+                  }
+                `;
+                
+                // Function oluştur ve çalıştır
+                const getJSON = new Function(jsonStr);
+                const result = getJSON();
+                
+                // Sonucu kontrol et
+                const parsedResult = JSON.parse(result);
+                if (parsedResult.error) {
+                  throw new Error(`Function hatası: ${parsedResult.error}`);
                 }
                 
-                const jsonStr = jsonMatch[0];
-                console.log("JSON yapısı çıkarıldı, parse ediliyor...");
-                
-                // JSON olarak parse et
-                const jsonData = JSON.parse(jsonStr);
                 console.log("JSON başarıyla parse edildi!");
                 
                 // Veriyi düzgün JSON formatında kaydet
-                fs.writeFileSync("data-haberler.json", JSON.stringify(jsonData, null, 2));
+                fs.writeFileSync("data-haberler.json", result);
                 console.log("JSON dosyası başarıyla güncellendi!");
                 
                 // Başarılı olduğunu belirtmek için bir işaret dosyası oluştur
@@ -93,23 +92,71 @@ jobs:
               } catch (parseError) {
                 console.error("JSON parse hatası:", parseError);
                 
-                // Manuel olarak JSON formatını düzeltmeyi dene
+                // Düzeltilmiş veriyi oluştur
                 console.log("Manuel JSON düzeltme deneniyor...");
                 
                 try {
-                  // JavaScript eval kullanarak JSON'u çıkar (güvenli değil ama son çare)
-                  const dataStr = "const data = " + cleanedData + "; data;";
-                  const jsonData = eval(dataStr);
+                  // Regex ile JSON içindeki yaygın hataları düzelt
+                  let fixedData = cleanedData
+                    // Virgülsüz sayıları düzelt (örn: 123 456 -> 123456)
+                    .replace(/(\d+)\s+(\d+)/g, function(match, p1, p2) {
+                      return p1 + p2;
+                    })
+                    // Hatalı ondalık sayıları düzelt (örn: 123,456 -> 123.456)
+                    .replace(/(\d+),(\d+)(?!\s*["\]}])/g, '$1.$2')
+                    // Çift tırnak içindeki çift tırnakları düzelt
+                    .replace(/([^\\])"([^"]*)"([^:])/g, '$1\\"$2\\"$3')
+                    // Eksik virgülleri düzelt (örn: {"a": 1 "b": 2} -> {"a": 1, "b": 2})
+                    .replace(/(["\d])\s*}/g, '$1}')
+                    .replace(/(["\d])\s*{/g, '$1,{')
+                    .replace(/}\s*{/g, '},{')
+                    .replace(/]\s*{/g, '],{')
+                    .replace(/}\s*\[/g, '},[')
+                    .replace(/(["\d])\s*\[/g, '$1,[')
+                    .replace(/]\s*\[/g, '],[')
+                    // Fazla virgülleri temizle
+                    .replace(/,\s*[,\s]*}/g, '}')
+                    .replace(/,\s*[,\s]*]/g, ']');
                   
+                  // Düzeltilmiş veriyi kaydet
+                  fs.writeFileSync("manual-fixed-data.txt", fixedData);
+                  console.log("Manuel düzeltilmiş veri dosyası kaydedildi: manual-fixed-data.txt");
+                  
+                  // JSON olarak parse et
+                  const jsonData = JSON.parse(fixedData);
                   console.log("Manuel düzeltme başarılı!");
+                  
+                  // Veriyi düzgün JSON formatında kaydet
                   fs.writeFileSync("data-haberler.json", JSON.stringify(jsonData, null, 2));
                   console.log("JSON dosyası başarıyla güncellendi!");
                   
                   fs.writeFileSync("success.flag", "true");
                   return true;
-                } catch (evalError) {
-                  console.error("Manuel düzeltme başarısız:", evalError);
-                  throw evalError;
+                } catch (manualError) {
+                  console.error("Manuel düzeltme başarısız:", manualError);
+                  
+                  // Basit bir çözüm olarak, ham veriyi JavaScript koduna dönüştür ve çalıştır
+                  try {
+                    console.log("Son çare yöntemi deneniyor...");
+                    
+                    // Veriyi JavaScript dosyası olarak kaydet
+                    fs.writeFileSync("data-extractor.js", `
+                      ${decoded}
+                      const fs = require('fs');
+                      fs.writeFileSync('data-haberler.json', JSON.stringify(data, null, 2));
+                      console.log('Veri başarıyla çıkarıldı!');
+                    `);
+                    
+                    // JavaScript dosyasını çalıştır
+                    require('child_process').execSync('node data-extractor.js', { stdio: 'inherit' });
+                    
+                    console.log("Son çare yöntemi başarılı!");
+                    fs.writeFileSync("success.flag", "true");
+                    return true;
+                  } catch (lastResortError) {
+                    console.error("Son çare yöntemi başarısız:", lastResortError);
+                    throw lastResortError;
+                  }
                 }
               }
             } catch (error) {
@@ -129,6 +176,6 @@ jobs:
         run: |
           git config --global user.name 'GitHub Actions'
           git config --global user.email 'actions@github.com'
-          git add data-haberler.json raw-data.txt cleaned-data.txt fixed-data.txt success.flag || true
+          git add data-haberler.json raw-data.txt cleaned-data.txt fixed-data.txt manual-fixed-data.txt success.flag data-extractor.js || true
           git diff --quiet && git diff --staged --quiet || git commit -m "JSON dosyası otomatik güncellendi: $(date +'%Y-%m-%d %H:%M:%S')"
           git push
