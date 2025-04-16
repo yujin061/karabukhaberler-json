@@ -2,7 +2,7 @@ name: Update JSON File
 
 on:
   schedule:
-    - cron: '0 */1 * * *'
+    - cron: '0 */1 * * *' # Her 1 saatte bir çalıştırılır
   workflow_dispatch:
 
 jobs:
@@ -26,7 +26,6 @@ jobs:
           node << 'EOF'
           const axios = require("axios");
           const fs = require("fs").promises;
-          const { exec } = require("child_process");
           const iconv = require("iconv-lite");
 
           (async () => {
@@ -34,44 +33,31 @@ jobs:
               console.log("JSON dosyası çekiliyor...");
               const response = await axios.get("https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json", {
                 headers: {
-                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                  "Accept": "application/json, text/plain, */*",
-                  "Referer": "https://www.karabuk.bel.tr/",
-                  "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7"
+                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
                 },
-                responseType: "arraybuffer",
-                timeout: 10000
+                responseType: 'arraybuffer'
               });
 
-              console.log("Yanıt alındı. Status Code:", response.status);
+              // İçeriği UTF-8 formatına dönüştür
+              const decodedData = iconv.decode(response.data, 'UTF-8');
 
-              // Ham veriyi UTF-8'e çevir
-              let rawData = iconv.decode(response.data, "windows-1254");
-              console.log("Ham veri (ilk 200 karakter):", rawData.substring(0, 200));
+              // JSON formatına uygun hale getirme
+              const cleanedData = decodedData.replace(/var data = /, '').trim();
+              const jsonData = JSON.parse(cleanedData);
 
-              // JavaScript değişken tanımını ve gereksiz karakterleri temizle
-              rawData = rawData.replace(/^[\\ufeff\\ufffd\\u00ff\\u015f]*var\\s+data\\s*=\\s*/, "");
-              rawData = rawData.trim();
-
-              // Haberler dizisini bul
-              const haberlerMatch = rawData.match(/\\{\"haberler\"\\s*:\\s*\\[(.*)\\]\\s*\\}/s);
-              if (!haberlerMatch) {
-                throw new Error("Haberler dizisi bulunamadı.");
-              }
-
-              // Temizlenmiş veriyi JSON formatında kaydet
-              const cleanedData = `{"haberler": [${haberlerMatch[1]}]}`;
-              await fs.writeFile('./data-haberler.json', cleanedData, 'utf8');
-              console.log("data-haberler.json başarıyla güncellendi.");
-
-              // Değişiklikleri commit et ve push yap
-              await exec("git config --global user.email 'yucelaydin61@gmail.com.com'");
-              await exec("git config --global user.name 'yujin061'");
-              await exec("git add data-haberler.json");
-              await exec("git commit -m 'Güncellenmiş data-haberler.json dosyası'");
-              await exec("git push");
+              // Yeni JSON dosyasını kaydetme
+              await fs.writeFile('data-haberler.json', JSON.stringify(jsonData, null, 2));
+              console.log("JSON dosyası güncellendi.");
             } catch (error) {
-              console.error("Hata:", error.message);
+              console.error("Bir hata oluştu:", error);
             }
           })();
           EOF
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add data-haberler.json
+          git commit -m "Update JSON file"
+          git push
