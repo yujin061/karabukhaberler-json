@@ -44,15 +44,37 @@ jobs:
 
               console.log("Yanıt alındı. Status Code:", response.status);
               
-              // Ham veriyi UTF-8'e çevir
+              // Ham veriyi UTF-8'e çevir ve BOM karakterlerini kaldır
               let rawData = iconv.decode(response.data, "windows-1254");
+              rawData = rawData.replace(/^\ufeff|\ufffd|\u00ff|\u015f/g, "").trim();
               console.log("Ham veri (ilk 200 karakter):", rawData.substring(0, 200));
 
               // JavaScript değişken tanımını ve gereksiz karakterleri temizle
-              rawData = rawData.replace(/^[\ufeff\ufffd\u00ff\u015f]*var\s+data\s*=\s*/, "").trim();
+              rawData = rawData.replace(/^var\s+data\s*=\s*/, "");
               
               // JSON'u geçerli hale getir
               rawData = rawData.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
+              
+              // Türkçe karakter bozulmalarını düzelt
+              rawData = rawData.replace(/\\u00fc/g, 'ü')
+                              .replace(/\\u0131/g, 'ı')
+                              .replace(/\\u011f/g, 'ğ')
+                              .replace(/\\u015f/g, 'ş')
+                              .replace(/\\u00e7/g, 'ç')
+                              .replace(/\\u00f6/g, 'ö')
+                              .replace(/\\u0130/g, 'İ')
+                              .replace(/\\u00c7/g, 'Ç')
+                              .replace(/\\u011e/g, 'Ğ')
+                              .replace(/\\u015e/g, 'Ş')
+                              .replace(/[^\x00-\x7F]/g, (char) => {
+                                // Bilinmeyen karakterleri en yakın Türkçe karaktere dönüştür
+                                const replacements = {
+                                  '0çi_leri': 'İçişleri',
+                                  '1mc1s1': 'Yardımcısı',
+                                  ' ': '’'
+                                };
+                                return replacements[char] || char;
+                              });
 
               // JSON'u parse et
               let parsedData;
