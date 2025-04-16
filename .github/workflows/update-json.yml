@@ -2,7 +2,7 @@ name: JSON HTML Content Parser
 
 on:
   schedule:
-    - cron: '0 */1 * * *'  # Her 12 saatte bir çalışır
+    - cron: '0 */12 * * *'  # Her 12 saatte bir çalışır
   workflow_dispatch:  # Manuel tetikleme için
 
 jobs:
@@ -80,10 +80,10 @@ jobs:
               
               // HTML içeriğini düzgün escape etmek için regex kullan
               processedData = processedData.replace(/"haberdetay"\s*:\s*"(.*?)(?<!\\)"/gs, function(match, content) {
-                // HTML içeriğini escape et
+                // HTML içeriğini escape et - DÜZELTME: Çift tırnak escape sözdizimi düzeltildi
                 const escaped = content
                   .replace(/\\/g, "\\\\")
-                  .replace(/"/g, "\\"")
+                  .replace(/"/g, "\\\\"") // Hatalı: .replace(/"/g, "\\"")
                   .replace(/\n/g, "\\n")
                   .replace(/\r/g, "\\r")
                   .replace(/\t/g, "\\t");
@@ -113,7 +113,7 @@ jobs:
                 
                 console.log(`::set-output name=summary::${JSON.stringify(summary)}`);
                 
-                // GitHub step summary'ye sonuçları ekle
+                // GitHub step summary\'ye sonuçları ekle
                 const summaryMsg = `## JSON İşleme Sonuçları\n` +
                                   `- Toplam kayıt: ${jsonData.length}\n` +
                                   `- İlk kayıt ID: ${jsonData[0]?.id || "N/A"}\n` +
