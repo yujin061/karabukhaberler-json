@@ -30,7 +30,7 @@ jobs:
 
           (async () => {
             try {
-              console.log("JSON dosyasi cekiliyor...");
+              console.log("JSON dosyası çekiliyor...");
               const response = await axios.get("https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json", {
                 headers: {
                   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
@@ -42,108 +42,28 @@ jobs:
                 timeout: 10000
               });
 
-              console.log("Yanit alindi. Status Code:", response.status);
-              
+              console.log("Yanıt alındı. Status Code:", response.status);
+
               // Ham veriyi UTF-8'e çevir
               let rawData = iconv.decode(response.data, "windows-1254");
               console.log("Ham veri (ilk 200 karakter):", rawData.substring(0, 200));
 
               // JavaScript değişken tanımını ve gereksiz karakterleri temizle
-              rawData = rawData.replace(/^[\ufeff\ufffd\u00ff\u015f]*var\s+data\s*=\s*/, "");
+              rawData = rawData.replace(/^[\\ufeff\\ufffd\\u00ff\\u015f]*var\\s+data\\s*=\\s*/, "");
               rawData = rawData.trim();
 
               // Haberler dizisini bul
-              const haberlerMatch = rawData.match(/\{"haberler"\s*:\s*\[(.*)\]\s*\}/s);
+              const haberlerMatch = rawData.match(/\\{\"haberler\"\\s*:\\s*\\[(.*)\\]\\s*\\}/s);
               if (!haberlerMatch) {
-                throw new Error("Haberler dizisi bulunamadi");
+                throw new Error("Haberler dizisi bulunamadı.");
               }
 
-              // Her bir haberi ayrı ayrı işle
-              const haberlerString = haberlerMatch[1].trim();
-              const haberlerArray = [];
-              let currentHaber = "";
-              let bracketCount = 0;
-
-              for (let i = 0; i < haberlerString.length; i++) {
-                const char = haberlerString[i];
-                currentHaber += char;
-
-                if (char === '{') bracketCount++;
-                if (char === '}') bracketCount--;
-
-                if (bracketCount === 0 && currentHaber.trim()) {
-                  try {
-                    // Her bir haberi temizle ve parse et
-                    let haber = currentHaber.trim().replace(/^,/, "").replace(/,$/, "");
-                    haber = haber.replace(/&quot;/g, '"')
-                                .replace(/&amp;/g, '&')
-                                .replace(/&lt;/g, '<')
-                                .replace(/&gt;/g, '>')
-                                .replace(/&nbsp;/g, ' ')
-                                .replace(/\\u00fc/g, 'ü')
-                                .replace(/\\u0131/g, 'ı')
-                                .replace(/\\u011f/g, 'ğ')
-                                .replace(/\\u015f/g, 'ş')
-                                .replace(/\\u00e7/g, 'ç')
-                                .replace(/\\u00f6/g, 'ö');
-
-                    const haberObj = JSON.parse(haber);
-                    haberlerArray.push({
-                      kategoriadi: haberObj.kategoriadi?.toString() ?? "",
-                      haberresim: haberObj.haberresim?.toString() ?? "",
-                      haberbaslik: haberObj.haberbaslik?.toString() ?? "",
-                      haberkisa: haberObj.haberkisa?.toString() ?? "",
-                      tarih: haberObj.tarih?.toString() ?? "",
-                      okunma: haberObj.okunma?.toString() ?? "",
-                      detay_url: `https://www.karabuk.bel.tr/haber.asp?id=${100667942 - haberlerArray.length}`
-                    });
-                    currentHaber = "";
-                  } catch (parseError) {
-                    console.error("Haber parse hatasi:", parseError.message);
-                    console.error("Hatali haber:", currentHaber);
-                  }
-                }
-              }
-
-              if (haberlerArray.length === 0) {
-                throw new Error("Hic haber parse edilemedi");
-              }
-
-              console.log(`${haberlerArray.length} haber basariyla parse edildi`);
-
-              // Mevcut dosyayı kontrol et
-              let existingData = [];
-              try {
-                const existingContent = await fs.readFile("data-haberler.json", "utf8");
-                existingData = JSON.parse(existingContent);
-              } catch (err) {
-                console.log("Mevcut dosya okunamadi, yeni dosya olusturulacak");
-              }
-
-              // Değişiklik varsa kaydet
-              const isChanged = JSON.stringify(existingData) !== JSON.stringify(haberlerArray);
-              if (isChanged) {
-                await fs.writeFile("data-haberler.json", JSON.stringify(haberlerArray, null, 2));
-                console.log("JSON dosyasi guncellendi");
-              } else {
-                console.log("Degisiklik yok");
-              }
-
+              // Temizlenmiş veriyi JSON formatında kaydet
+              const cleanedData = `{"haberler": [${haberlerMatch[1]}]}`;
+              await fs.writeFile('./data-haberler.json', cleanedData, 'utf8');
+              console.log("data-haberler.json başarıyla güncellendi.");
             } catch (error) {
               console.error("Hata:", error.message);
-              if (error.response) {
-                console.error("Yanit Status Code:", error.response.status);
-                console.error("Yanit Data:", error.response.data);
-              }
-              process.exit(1);
             }
           })();
           EOF
-
-      - name: Commit changes
-        run: |
-          git config --global user.name 'GitHub Action'
-          git config --global user.email 'action@github.com'
-          git add data-haberler.json
-          git commit -m 'JSON dosyası güncellendi' || echo "Değişiklik yok"
-          git push
