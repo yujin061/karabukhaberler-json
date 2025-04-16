@@ -2,7 +2,7 @@ name: Update JSON File
 
 on:
   schedule:
-    - cron: '0 */3 * * *' # Her 3 saatte bir çalıştırılır
+    - cron: '0 */1 * * *' # Her 3 saatte bir çalıştırılır
   workflow_dispatch:
 
 permissions:
@@ -58,7 +58,13 @@ jobs:
               rawData = rawData.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
               
               // Türkçe karakter bozulmalarını düzelt
-              rawData = rawData.replace(/\\u00fc/g, 'ü')
+              rawData = rawData.replace(/0i_leri/g, 'İçişleri')
+                              .replace(/1mc1s1/g, 'Yardımcısı')
+                              .replace(/Blent/g, 'Bülent')
+                              .replace(/Karabk/g, 'Karabük')
+                              .replace(/ /g, '’')
+                              .replace(/Bar1nak/g, 'Barınak')
+                              .replace(/\\u00fc/g, 'ü')
                               .replace(/\\u0131/g, 'ı')
                               .replace(/\\u011f/g, 'ğ')
                               .replace(/\\u015f/g, 'ş')
@@ -67,15 +73,7 @@ jobs:
                               .replace(/\\u0130/g, 'İ')
                               .replace(/\\u00c7/g, 'Ç')
                               .replace(/\\u011e/g, 'Ğ')
-                              .replace(/\\u015e/g, 'Ş')
-                              .replace(/[^\x00-\x7F]+/g, (char) => {
-                                const replacements = {
-                                  '0çi_leri': 'İçişleri',
-                                  '1mc1s1': 'Yardımcısı',
-                                  ' ': '’'
-                                };
-                                return replacements[char] || '';
-                              });
+                              .replace(/\\u015e/g, 'Ş');
 
               // JSON'u parse et
               let parsedData;
@@ -114,7 +112,7 @@ jobs:
                 const existingContent = await fs.readFile("data-haberler.json", "utf8");
                 existingData = JSON.parse(existingContent);
               } catch (err) {
-                console.log(" gMevcut dosya okunamadı, yeni dosya oluşturulacak");
+                console.log("Mevcut dosya okunamadı, yeni dosya oluşturulacak");
               }
 
               // Değişiklik varsa kaydet
