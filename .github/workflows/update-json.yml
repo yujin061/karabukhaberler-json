@@ -30,32 +30,54 @@ jobs:
           
           async function fetchAndUpdateJSON() {
             try {
+              console.log("API'den veri çekiliyor...");
               // Karabük Belediyesi API'sinden veriyi çek
               const response = await axios.get("https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json", {
                 responseType: "arraybuffer"
               });
               
-              // Windows-1254 (Turkish) encoding'den UTF-8'e dönüştür
-              const data = iconv.decode(response.data, "windows-1254");
+              // İlk birkaç byte'ı kontrol ederek BOM (Byte Order Mark) olup olmadığını kontrol et
+              const buffer = Buffer.from(response.data);
+              console.log("İlk 20 byte:", buffer.slice(0, 20).toString('hex'));
               
-              // JavaScript objesine dönüştür
-              let jsonData;
+              // Farklı kodlamaları dene
+              const encodings = ["utf8", "windows-1254", "iso-8859-9", "latin1"];
+              let jsonData = null;
+              let cleanedData = "";
               
-              try {
-                // Veriyi temizle ve parse et
-                const cleanedData = data
-                  .replace(/^var data = /, "")  // Başındaki "var data = " kısmını temizle
-                  .replace(/;$/, "");  // Sondaki ";" işaretini temizle
-                
-                jsonData = JSON.parse(cleanedData);
-              } catch (parseError) {
-                console.error("JSON parse hatası:", parseError);
-                process.exit(1);
+              for (const encoding of encodings) {
+                try {
+                  console.log(`${encoding} kodlaması deneniyor...`);
+                  const decoded = iconv.decode(buffer, encoding);
+                  
+                  // İlk 100 karakteri göster
+                  console.log(`İlk 100 karakter (${encoding}):`, decoded.substring(0, 100));
+                  
+                  // Veriyi temizle
+                  cleanedData = decoded
+                    .replace(/^[\ufeff\ufffe]?var data = /, "")  // BOM ve "var data = " kısmını temizle
+                    .replace(/;$/, "");  // Sondaki ";" işaretini temizle
+                  
+                  // JSON olarak parse etmeyi dene
+                  jsonData = JSON.parse(cleanedData);
+                  console.log(`${encoding} kodlaması ile başarılı!`);
+                  break; // Başarılı olduğunda döngüden çık
+                } catch (parseError) {
+                  console.log(`${encoding} kodlaması ile parse hatası:`, parseError.message);
+                }
+              }
+              
+              if (!jsonData) {
+                throw new Error("Hiçbir kodlama ile JSON parse edilemedi.");
               }
               
               // Veriyi düzgün JSON formatında kaydet
               fs.writeFileSync("data-haberler.json", JSON.stringify(jsonData, null, 2));
               console.log("JSON dosyası başarıyla güncellendi!");
+              
+              // Debug için ham veriyi de kaydet
+              fs.writeFileSync("raw-data.txt", cleanedData);
+              console.log("Ham veri dosyası kaydedildi.");
             } catch (error) {
               console.error("Hata oluştu:", error);
               process.exit(1);
@@ -68,10 +90,11 @@ jobs:
       - name: Run update script
         run: node update-json.js
 
-      - name: Commit and push changes
+      - name: Commit and push changes if successful
+        if: ${{ success() }}
         run: |
           git config --global user.name 'GitHub Actions'
           git config --global user.email 'actions@github.com'
-          git add data-haberler.json
+          git add data-haberler.json raw-data.txt
           git diff --quiet && git diff --staged --quiet || git commit -m "JSON dosyası otomatik güncellendi: $(date +'%Y-%m-%d %H:%M:%S')"
           git push
