@@ -2,7 +2,7 @@ name: Update JSON File
 
 on:
   schedule:
-    - cron: '0 */1 * * *'
+    - cron: '0 */3 * * *'
   workflow_dispatch:
 
 jobs:
@@ -43,27 +43,81 @@ jobs:
               });
 
               console.log("Yanıt alındı. Status Code:", response.status);
-
+              
               // Ham veriyi UTF-8'e çevir
               let rawData = iconv.decode(response.data, "windows-1254");
               console.log("Ham veri (ilk 200 karakter):", rawData.substring(0, 200));
 
               // JavaScript değişken tanımını ve gereksiz karakterleri temizle
-              rawData = rawData.replace(/^[\\ufeff\\ufffd\\u00ff\\u015f]*var\\s+data\\s*=\\s*/, "");
-              rawData = rawData.trim();
+              rawData = rawData.replace(/^[\ufeff\ufffd\u00ff\u015f]*var\s+data\s*=\s*/, "").trim();
+              
+              // JSON'u geçerli hale getir
+              rawData = rawData.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
 
-              // Haberler dizisini bul
-              const haberlerMatch = rawData.match(/\\{\"haberler\"\\s*:\\s*\\[(.*)\\]\\s*\\}/s);
-              if (!haberlerMatch) {
-                throw new Error("Haberler dizisi bulunamadı.");
+              // JSON'u parse et
+              let parsedData;
+              try {
+                parsedData = JSON.parse(rawData);
+              } catch (parseError) {
+                console.error("JSON parse hatası:", parseError.message);
+                console.error("Hatalı veri:", rawData.substring(0, 500));
+                process.exit(1);
               }
 
-              // Temizlenmiş veriyi JSON formatında kaydet
-              const cleanedData = `{"haberler": [${haberlerMatch[1]}]}`;
-              await fs.writeFile('./data-haberler.json', cleanedData, 'utf8');
-              console.log("data-haberler.json başarıyla güncellendi.");
+              // Haberler dizisini al
+              const haberler = parsedData.haberler || [];
+              if (!haberler.length) {
+                throw new Error("Haberler dizisi boş veya bulunamadı");
+              }
+
+              // Haberleri Cozum.txt formatına dönüştür
+              const haberlerArray = haberler.map((haber, index) => {
+                return {
+                  kategoriadi: haber.kategoriadi?.toString() ?? "",
+                  haberresim: haber.haberresim?.toString() ?? "",
+                  haberbaslik: haber.haberbaslik?.toString() ?? "",
+                  haberkisa: haber.haberkisa?.toString() ?? "",
+                  tarih: haber.tarih?.toString() ?? "",
+                  okunma: "", // Cozum.txt'de okunma her zaman boş
+                  detay_url: `https://www.karabuk.bel.tr/haber.asp?id=${100667942 - index}` // Benzersiz ID üretimi
+                };
+              });
+
+              console.log(`${haberlerArray.length} haber başarıyla işlendi`);
+
+              // Mevcut dosyayı kontrol et
+              let existingData = [];
+              try {
+                const existingContent = await fs.readFile("data-haberler.json", "utf8");
+                existingData = JSON.parse(existingContent);
+              } catch (err) {
+                console.log("Mevcut dosya okunamadı, yeni dosya oluşturulacak");
+              }
+
+              // Değişiklik varsa kaydet
+              const isChanged = JSON.stringify(existingData) !== JSON.stringify(haberlerArray);
+              if (isChanged) {
+                await fs.writeFile("data-haberler.json", JSON.stringify(haberlerArray, null, 2), "utf8");
+                console.log("JSON dosyası güncellendi");
+              } else {
+                console.log("Değişiklik yok");
+              }
+
             } catch (error) {
               console.error("Hata:", error.message);
+              if (error.response) {
+                console.error("Yanıt Status Code:", error.response.status);
+                console.error("Yanıt Data:", error.response.data);
+              }
+              process.exit(1);
             }
           })();
           EOF
+
+      - name: Commit changes
+        run: |
+          git config --global user.name 'GitHub Action'
+          git config --global user.email 'action@github.com'
+          git add data-haberler.json
+          git commit -m 'JSON dosyası güncellendi' || echo "Değişiklik yok"
+          git push
