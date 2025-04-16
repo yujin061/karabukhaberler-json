@@ -3,7 +3,7 @@ name: Update JSON File
 on:
   schedule:
     - cron: '0 */3 * * *' # Her 3 saatte bir çalıştırılır
-  workflow_dispatch:
+  workflow_dispatch: {} # Manuel tetikleme için doğru yapı
 
 permissions:
   contents: write # Repository içeriğine yazma izni
