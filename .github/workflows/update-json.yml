@@ -19,14 +19,13 @@ jobs:
           node-version: '16'
 
       - name: Install dependencies
-        run: npm install axios iconv-lite
+        run: npm install axios
 
       - name: Create update script
         run: |
           cat > update-json.js << 'EOL'
           const axios = require("axios");
           const fs = require("fs");
-          const iconv = require("iconv-lite");
           
           async function fetchAndUpdateJSON() {
             try {
@@ -36,48 +35,47 @@ jobs:
                 responseType: "arraybuffer"
               });
               
-              // İlk birkaç byte'ı kontrol ederek BOM (Byte Order Mark) olup olmadığını kontrol et
+              // Buffer oluştur
               const buffer = Buffer.from(response.data);
+              
+              // İlk birkaç byte'ı kontrol et
               console.log("İlk 20 byte:", buffer.slice(0, 20).toString('hex'));
               
-              // Farklı kodlamaları dene
-              const encodings = ["utf8", "windows-1254", "iso-8859-9", "latin1"];
-              let jsonData = null;
-              let cleanedData = "";
+              // UTF-16LE olarak decode et (BOM işareti FF FE ile başlıyor)
+              console.log("UTF-16LE kodlaması deneniyor...");
+              const decoded = buffer.toString('utf16le');
               
-              for (const encoding of encodings) {
-                try {
-                  console.log(`${encoding} kodlaması deneniyor...`);
-                  const decoded = iconv.decode(buffer, encoding);
-                  
-                  // İlk 100 karakteri göster
-                  console.log(`İlk 100 karakter (${encoding}):`, decoded.substring(0, 100));
-                  
-                  // Veriyi temizle
-                  cleanedData = decoded
-                    .replace(/^[\ufeff\ufffe]?var data = /, "")  // BOM ve "var data = " kısmını temizle
-                    .replace(/;$/, "");  // Sondaki ";" işaretini temizle
-                  
-                  // JSON olarak parse etmeyi dene
-                  jsonData = JSON.parse(cleanedData);
-                  console.log(`${encoding} kodlaması ile başarılı!`);
-                  break; // Başarılı olduğunda döngüden çık
-                } catch (parseError) {
-                  console.log(`${encoding} kodlaması ile parse hatası:`, parseError.message);
-                }
+              // İlk 100 karakteri göster
+              console.log("İlk 100 karakter:", decoded.substring(0, 100));
+              
+              // "var data = " kısmını ve sondaki ";" işaretini temizle
+              const cleanedData = decoded.replace(/^[\ufeff\ufffe]?var data = /, "").replace(/;$/, "");
+              
+              try {
+                // JSON olarak parse et
+                const jsonData = JSON.parse(cleanedData);
+                console.log("JSON başarıyla parse edildi!");
+                
+                // Veriyi düzgün JSON formatında kaydet
+                fs.writeFileSync("data-haberler.json", JSON.stringify(jsonData, null, 2));
+                console.log("JSON dosyası başarıyla güncellendi!");
+                
+                // Başarılı olduğunu belirtmek için bir işaret dosyası oluştur
+                fs.writeFileSync("success.flag", "true");
+                return true;
+              } catch (parseError) {
+                console.error("JSON parse hatası:", parseError);
+                
+                // Ham veriyi kaydet
+                fs.writeFileSync("raw-data.txt", decoded);
+                console.log("Ham veri dosyası kaydedildi: raw-data.txt");
+                
+                // Temizlenmiş veriyi de kaydet
+                fs.writeFileSync("cleaned-data.txt", cleanedData);
+                console.log("Temizlenmiş veri dosyası kaydedildi: cleaned-data.txt");
+                
+                throw parseError;
               }
-              
-              if (!jsonData) {
-                throw new Error("Hiçbir kodlama ile JSON parse edilemedi.");
-              }
-              
-              // Veriyi düzgün JSON formatında kaydet
-              fs.writeFileSync("data-haberler.json", JSON.stringify(jsonData, null, 2));
-              console.log("JSON dosyası başarıyla güncellendi!");
-              
-              // Debug için ham veriyi de kaydet
-              fs.writeFileSync("raw-data.txt", cleanedData);
-              console.log("Ham veri dosyası kaydedildi.");
             } catch (error) {
               console.error("Hata oluştu:", error);
               process.exit(1);
@@ -95,6 +93,6 @@ jobs:
         run: |
           git config --global user.name 'GitHub Actions'
           git config --global user.email 'actions@github.com'
-          git add data-haberler.json raw-data.txt
+          git add data-haberler.json raw-data.txt cleaned-data.txt success.flag || true
           git diff --quiet && git diff --staged --quiet || git commit -m "JSON dosyası otomatik güncellendi: $(date +'%Y-%m-%d %H:%M:%S')"
           git push
