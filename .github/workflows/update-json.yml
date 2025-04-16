@@ -2,7 +2,7 @@ name: Update JSON File
 
 on:
   schedule:
-    - cron: '0 */1 * * *' # Her 3 saatte bir çalıştırılır
+    - cron: '0 */1 * * *' # Her saat çalıştırılır
   workflow_dispatch:
 
 jobs:
@@ -38,28 +38,108 @@ jobs:
                 responseType: 'arraybuffer'
               });
 
-              // İçeriği UTF-8 formatına dönüştür
-              const decodedData = iconv.decode(response.data, 'UTF-8');
+              console.log("Veri alındı, boyut:", response.data.length, "bytes");
+              
+              // Farklı kodlamaları deneme
+              let jsonData = null;
+              const encodings = ['UTF-8', 'UTF-16LE', 'UTF-16BE', 'ISO-8859-1'];
+              
+              for (const encoding of encodings) {
+                try {
+                  console.log(`${encoding} kodlaması deneniyor...`);
+                  const decodedData = iconv.decode(response.data, encoding);
+                  
+                  // İlk 100 karakteri kontrol et
+                  console.log(`İlk 100 karakter (${encoding}):`, decodedData.substring(0, 100));
+                  
+                  // "var data = " ve sonundaki ";" kaldırma
+                  let cleanedData = decodedData
+                    .replace(/^[\ufeff\ufffe]?var\s+data\s*=\s*/, '')
+                    .replace(/;[\s\n\r]*$/, '');
+                  
+                  // JSON formatını düzeltme denemeleri
+                  try {
+                    jsonData = JSON.parse(cleanedData);
+                    console.log(`${encoding} ile başarılı parse! Veri tipi:`, typeof jsonData);
+                    console.log("Veri örneği:", JSON.stringify(jsonData).substring(0, 200) + "...");
+                    break; // Başarılı parse edildiyse döngüden çık
+                  } catch (parseError) {
+                    console.log(`${encoding} ile parse hatası:`, parseError.message);
+                    
+                    // JSON Array olarak dene
+                    try {
+                      jsonData = JSON.parse(`[${cleanedData}]`);
+                      console.log(`${encoding} ile array olarak parse başarılı!`);
+                      break;
+                    } catch (arrayError) {
+                      console.log(`Array parse hatası:`, arrayError.message);
+                    }
+                    
+                    // Özel karakterleri temizleme dene
+                    try {
+                      const sanitizedData = cleanedData
+                        .replace(/\\"/g, '\\"')
+                        .replace(/\n/g, '\\n')
+                        .replace(/\r/g, '\\r')
+                        .replace(/\t/g, '\\t');
+                      
+                      jsonData = JSON.parse(sanitizedData);
+                      console.log(`${encoding} ile sanitize sonrası parse başarılı!`);
+                      break;
+                    } catch (sanitizeError) {
+                      console.log(`Sanitize sonrası parse hatası:`, sanitizeError.message);
+                    }
+                  }
+                } catch (encodingError) {
+                  console.log(`${encoding} kodlama hatası:`, encodingError.message);
+                }
+              }
 
-              // JSON formatına uygun hale getirme
-              const cleanedData = decodedData.replace(/var data = /, '').trim();
-              const jsonData = JSON.parse(cleanedData);
-
-              // Yeni JSON dosyasını kaydetme
-              await fs.writeFile('data-haberler.json', JSON.stringify(jsonData, null, 2));
-              console.log("JSON dosyası güncellendi.");
+              if (jsonData) {
+                // Yeni JSON dosyasını kaydetme
+                await fs.writeFile('data-haberler.json', JSON.stringify(jsonData, null, 2));
+                console.log("JSON dosyası güncellendi.");
+                
+                // Veri istatistikleri
+                if (Array.isArray(jsonData)) {
+                  console.log(`Toplam ${jsonData.length} kayıt bulundu.`);
+                } else {
+                  console.log("Veri bir array değil, nesne yapısı:", Object.keys(jsonData));
+                }
+              } else {
+                console.error("Hiçbir kodlama ile JSON parse edilemedi!");
+                
+                // Ham veriyi kaydet
+                await fs.writeFile('raw-data.txt', iconv.decode(response.data, 'UTF-8'));
+                console.log("Ham veri raw-data.txt dosyasına kaydedildi.");
+              }
             } catch (error) {
-              console.error("Bir hata oluştu:", error);
+              console.error("Bir hata oluştu:", error.message);
+              if (error.response) {
+                console.error("Sunucu yanıtı:", error.response.status, error.response.statusText);
+              }
             }
           })();
           EOF
 
+      - name: Check if JSON file exists
+        id: check_file
+        run: |
+          if [ -f "data-haberler.json" ]; then
+            echo "::set-output name=exists::true"
+            echo "JSON dosyası oluşturuldu, boyut: $(stat -c%s data-haberler.json) bytes"
+          else
+            echo "::set-output name=exists::false"
+            echo "JSON dosyası oluşturulamadı!"
+          fi
+
       - name: Commit and push changes
+        if: steps.check_file.outputs.exists == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --global user.name "yujin061"
           git config --global user.email "yucelaydin61@gmail.com"
-          git add .
-          git commit -m "Update JSON file"
-          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/yujin061/karabukhaberler-json.git"
+          git add data-haberler.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update JSON file: $(date +'%Y-%m-%d %H:%M')" && git push "https://x-access-token:${GITHUB_TOKEN}@github.com/yujin061/karabukhaberler-json.git")
+          echo "Değişiklikler commit edildi ve push edildi."
