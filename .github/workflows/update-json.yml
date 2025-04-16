@@ -66,14 +66,14 @@ jobs:
                               .replace(/\\u00c7/g, 'Ç')
                               .replace(/\\u011e/g, 'Ğ')
                               .replace(/\\u015e/g, 'Ş')
-                              .replace(/[^\x00-\x7F]/g, (char) => {
+                              .replace(/[^\x00-\x7F]+/g, (char) => {
                                 // Bilinmeyen karakterleri en yakın Türkçe karaktere dönüştür
                                 const replacements = {
-                                  '0çi_leri': 'İçişleri',
-                                  '1mc1s1': 'Yardımcısı',
-                                  ' ': '’'
+                                  '0çi_leri': 'İçişleri',
+                                  '1mc1s1': 'Yardımcısı',
+                                  ' ': '’'
                                 };
-                                return replacements[char] || char;
+                                return replacements[char] || '';
                               });
 
               // JSON'u parse et
