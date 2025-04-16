@@ -1,170 +1,65 @@
-name: JSON HTML Content Parser
+name: Update JSON File
 
 on:
   schedule:
-    - cron: '0 */12 * * *'  # Her 12 saatte bir çalışır
-  workflow_dispatch:  # Manuel tetikleme için
+    - cron: '0 */1 * * *' # Her 3 saatte bir çalıştırılır
+  workflow_dispatch:
 
 jobs:
-  parse-json-with-html:
+  update-json:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Setup Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '16'
-          cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci || npm install
-        
-      - name: Fetch and process JSON with HTML content
-        id: process-json
+        run: npm install axios iconv-lite
+
+      - name: Fetch and update JSON
         run: |
-          node -e '
-          const fs = require("fs");
-          const https = require("https");
-          
-          function fetchData() {
-            return new Promise((resolve, reject) => {
-              const options = {
-                hostname: "services.karabuk.bel.tr",
-                path: "/jsons-karabukbeltr/data/data-haberler.json",
-                method: "GET",
-              };
-              
-              const req = https.request(options, (res) => {
-                if (res.statusCode !== 200) {
-                  reject(new Error(`API yanıt kodu: ${res.statusCode}`));
-                  return;
-                }
-                
-                const chunks = [];
-                res.on("data", (chunk) => chunks.push(chunk));
-                res.on("end", () => {
-                  const buffer = Buffer.concat(chunks);
-                  // UTF-16LE kodlamasını dene
-                  try {
-                    const decoded = buffer.toString("utf16le");
-                    resolve(decoded);
-                  } catch (error) {
-                    console.error("UTF-16LE çözme hatası:", error);
-                    // Alternatif olarak UTF-8 dene
-                    resolve(buffer.toString("utf8"));
-                  }
-                });
-              });
-              
-              req.on("error", (error) => {
-                reject(error);
-              });
-              
-              req.end();
-            });
-          }
-          
-          async function processData() {
+          node << 'EOF'
+          const axios = require("axios");
+          const fs = require("fs").promises;
+          const iconv = require("iconv-lite");
+
+          (async () => {
             try {
-              console.log("API verisi çekiliyor...");
-              const data = await fetchData();
-              
-              // "var data = " ve ";" kısımlarını temizle
-              let cleanedData = data.replace(/^[\ufeff\ufffe]?var\s+data\s*=\s*/, "").replace(/;[\s\n\r]*$/, "");
-              
-              // HTML içeriğini işle ve escape et
-              let processedData = cleanedData;
-              
-              // HTML içeriğini düzgün escape etmek için regex kullan
-              processedData = processedData.replace(/"haberdetay"\s*:\s*"(.*?)(?<!\\)"/gs, function(match, content) {
-                // HTML içeriğini escape et - DÜZELTME: Çift tırnak escape sözdizimi düzeltildi
-                const escaped = content
-                  .replace(/\\/g, "\\\\")
-                  .replace(/"/g, "\\\\"") // Hatalı: .replace(/"/g, "\\"")
-                  .replace(/\n/g, "\\n")
-                  .replace(/\r/g, "\\r")
-                  .replace(/\t/g, "\\t");
-                return `"haberdetay":"${escaped}"`;
+              console.log("JSON dosyası çekiliyor...");
+              const response = await axios.get("https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json", {
+                headers: {
+                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
+                },
+                responseType: 'arraybuffer'
               });
-              
-              // JSON formatını düzelt
-              processedData = processedData
-                .replace(/}(\s*){/g, "},\n{")
-                .replace(/,(\s*[}\]])/g, "$1");
-              
-              // Array olarak sarmala ve parse et
-              try {
-                const jsonData = JSON.parse(`[${processedData}]`);
-                console.log("JSON başarıyla parse edildi!");
-                
-                // Sonuçları dosyaya kaydet
-                fs.writeFileSync("data-haberler.json", JSON.stringify(jsonData, null, 2));
-                
-                // GitHub Actions çıktısı olarak ayarla
-                const summary = {
-                  recordCount: jsonData.length,
-                  firstRecord: jsonData[0]?.id || "N/A",
-                  lastRecord: jsonData[jsonData.length - 1]?.id || "N/A",
-                  status: "success"
-                };
-                
-                console.log(`::set-output name=summary::${JSON.stringify(summary)}`);
-                
-                // GitHub step summary\'ye sonuçları ekle
-                const summaryMsg = `## JSON İşleme Sonuçları\n` +
-                                  `- Toplam kayıt: ${jsonData.length}\n` +
-                                  `- İlk kayıt ID: ${jsonData[0]?.id || "N/A"}\n` +
-                                  `- Son kayıt ID: ${jsonData[jsonData.length - 1]?.id || "N/A"}\n` +
-                                  `- İşlem durumu: Başarılı`;
-                
-                fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summaryMsg);
-              } catch (parseError) {
-                console.error("JSON parse hatası:", parseError);
-                
-                // HTML içeriğini tamamen kaldırarak son bir deneme yap
-                let strippedData = cleanedData.replace(/"haberdetay"\s*:\s*"[^"]*"/g, '"haberdetay": "HTML içeriği kaldırıldı"');
-                
-                try {
-                  const jsonData = JSON.parse(`[${strippedData}]`);
-                  fs.writeFileSync("data-haberler.json", JSON.stringify(jsonData, null, 2));
-                  console.log("HTML içeriği kaldırılarak JSON kaydedildi!");
-                  
-                  console.log(`::set-output name=summary::${JSON.stringify({
-                    recordCount: jsonData.length,
-                    status: "partial-success",
-                    message: "HTML içeriği kaldırıldı"
-                  })}`);
-                } catch (stripError) {
-                  console.error("Tüm yöntemler başarısız oldu:", stripError);
-                  process.exit(1);
-                }
-              }
+
+              // İçeriği UTF-8 formatına dönüştür
+              const decodedData = iconv.decode(response.data, 'UTF-8');
+
+              // JSON formatına uygun hale getirme
+              const cleanedData = decodedData.replace(/var data = /, '').trim();
+              const jsonData = JSON.parse(cleanedData);
+
+              // Yeni JSON dosyasını kaydetme
+              await fs.writeFile('data-haberler.json', JSON.stringify(jsonData, null, 2));
+              console.log("JSON dosyası güncellendi.");
             } catch (error) {
-              console.error("Hata oluştu:", error);
-              process.exit(1);
+              console.error("Bir hata oluştu:", error);
             }
-          }
-          
-          processData();
-          '
+          })();
+          EOF
 
-      - name: Commit and push if changed
+      - name: Commit and push changes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config --global user.name 'GitHub Actions Bot'
-          git config --global user.email 'actions@github.com'
-          git add data-haberler.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "JSON verileri güncellendi: $(date +'%Y-%m-%d')" && git push)
-
-      - name: Create summary
-        if: always()
-        run: |
-          echo "## İşlem Sonucu" >> $GITHUB_STEP_SUMMARY
-          if [ ${{ job.status }} == 'success' ]; then
-            echo "✅ JSON işleme başarılı oldu" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ JSON işleme başarısız oldu" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "Çalıştırma zamanı: $(date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_STEP_SUMMARY
+          git config --global user.name "yujin061"
+          git config --global user.email "yucelaydin61@gmail.com"
+          git add .
+          git commit -m "Update JSON file"
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/yujin061/karabukhaberler-json.git"
