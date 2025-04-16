@@ -2,7 +2,7 @@ name: Update JSON File
 
 on:
   schedule:
-    - cron: '0 */1 * * *' # Her saat çalıştırılır
+    - cron: '0 */4 * * *' # Her saat çalıştırılır
   workflow_dispatch:
 
 jobs:
