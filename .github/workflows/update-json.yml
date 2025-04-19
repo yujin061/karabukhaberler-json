@@ -21,6 +21,7 @@ jobs:
       - name: Install dependencies
         run: |
           npm install axios iconv-lite cheerio
+          sudo apt-get update
           sudo apt-get install -y jq
 
       - name: Fetch and process JSON
@@ -32,24 +33,51 @@ jobs:
           sed -i 's/^var data = //' raw.json
           sed -i 's/;$//' raw.json
           
-          # Kodlama sorunlarını düzelt
-          iconv -f WINDOWS-1254 -t UTF-8 raw.json -o cleaned.json || iconv -f ISO-8859-9 -t UTF-8 raw.json -o cleaned.json
+          # Node.js ile karakter kodlamasını düzelt
+          node -e "
+            const fs = require('fs');
+            const iconv = require('iconv-lite');
+            
+            // Ham veriyi oku (Windows-1254 veya ISO-8859-9 olabilir)
+            const rawData = fs.readFileSync('raw.json');
+            
+            // Önce Windows-1254 ile deneyelim
+            try {
+              const decoded = iconv.decode(rawData, 'windows-1254');
+              fs.writeFileSync('cleaned.json', decoded);
+            } catch (e) {
+              // Windows-1254 başarısız olursa ISO-8859-9 ile deneyelim
+              const decoded = iconv.decode(rawData, 'iso-8859-9');
+              fs.writeFileSync('cleaned.json', decoded);
+            }
+          "
           
           # JSON'u işle ve filtrele
-          jq '[.haberler[] | select(.haberkisa? and .haberkisa != "") | {
-            kategoriadi: .kategoriadi,
-            haberresim: .haberresim,
-            haberbaslik: .haberbaslik,
-            haberkisa: .haberkisa,
-            tarih: .tarih,
-            detay_url: (.haberdetay | gsub("<[^>]*>"; "") 
-              | gsub("&Ccedil;"; "Ç") | gsub("&ccedil;"; "ç")
-              | gsub("&Ouml;"; "Ö") | gsub("&ouml;"; "ö")
-              | gsub("&Uuml;"; "Ü") | gsub("&uuml;"; "ü")
-              | gsub("&rsquo;"; "'") | gsub("&nbsp;"; " ")
-              | gsub("&[^;]*;"; "") 
-              | gsub("\\n"; " ") | gsub("\\s+"; " ") | trim)
-          }]' cleaned.json > data-haberler.json
+          jq '
+            [.haberler[] | select(.haberkisa? and .haberkisa != "") | {
+              kategoriadi: .kategoriadi,
+              haberresim: .haberresim,
+              haberbaslik: .haberbaslik,
+              haberkisa: .haberkisa,
+              tarih: .tarih,
+              detay_url: (
+                .haberdetay // "" |
+                gsub("<[^>]*>"; "") |
+                gsub("&Ccedil;"; "Ç") |
+                gsub("&ccedil;"; "ç") |
+                gsub("&Ouml;"; "Ö") |
+                gsub("&ouml;"; "ö") |
+                gsub("&Uuml;"; "Ü") |
+                gsub("&uuml;"; "ü") |
+                gsub("&rsquo;"; "'") |
+                gsub("&nbsp;"; " ") |
+                gsub("&[^;]*;"; "") |
+                gsub("\\n"; " ") |
+                gsub("\\s+"; " ") |
+                trim
+              )
+            }]
+          ' cleaned.json > data-haberler.json
           
           # Debug için ham veriyi kaydet
           cp raw.json debug_raw.json
