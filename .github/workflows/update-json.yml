@@ -31,6 +31,7 @@ jobs:
           import html2text
           import re
           import sys
+          import unicodedata
 
           # Konsol çıktısını UTF-8'e zorla
           sys.stdout.reconfigure(encoding='utf-8')
@@ -47,6 +48,8 @@ jobs:
               response.raise_for_status()
           except requests.exceptions.RequestException as e:
               print(f"Veri çekme hatası: {e}")
+              with open("error_log.txt", "w", encoding="utf-8") as f:
+                  f.write(f"Veri çekme hatası: {e}\n")
               exit(1)
 
           # Ham veriyi dosyaya kaydet (hata ayıklamak için)
@@ -64,7 +67,14 @@ jobs:
               raw_content = raw_content.decode('utf-8', errors='ignore')
           except UnicodeDecodeError as e:
               print(f"Kodlama hatası: {e}")
+              with open("error_log.txt", "w", encoding="utf-8") as f:
+                  f.write(f"Kodlama hatası: {e}\n")
               exit(1)
+
+          # Kontrol karakterlerini ve fazla boşlukları temizle
+          raw_content = ''.join(c for c in raw_content if unicodedata.category(c)[0] != 'C')  # Kontrol karakterlerini kaldır
+          raw_content = raw_content.replace('\r', '').replace('\n', ' ').replace('\t', ' ').strip()
+          raw_content = re.sub(r'\s+', ' ', raw_content)  # Fazla boşlukları birleştir
 
           # Temizlenmiş ham veriyi kaydet
           with open("cleaned_response.txt", "w", encoding="utf-8") as f:
@@ -77,12 +87,14 @@ jobs:
               print("Bilgi: 'var data =' öneği bulundu ve kaldırıldı")
           else:
               print("Uyarı: 'var data =' öneği bulunamadı, JSON başlangıcını arıyoruz")
+              with open("debug_log.txt", "w", encoding="utf-8") as f:
+                  f.write(f"var data = bulunamadı. Ham içerik (ilk 500 karakter): {raw_content[:500]}\n")
 
           # JSON başlangıcını bul
           json_start = raw_content.find('{"haberler":')
           if json_start == -1:
-              # Alternatif: JSON başlangıcını düzenli ifadeyle bul
-              json_match = re.search(r'\{"haberler":\s*\[', raw_content)
+              # Alternatif: Düzenli ifadeyle JSON başlangıcını bul
+              json_match = re.search(r'\{"haberler":', raw_content)
               if json_match:
                   json_start = json_match.start()
                   raw_content = raw_content[json_start:]
@@ -90,6 +102,8 @@ jobs:
               else:
                   print("Hata: JSON verisi bulunamadı")
                   print(f"Ham içerik (ilk 500 karakter): {raw_content[:500]}...")
+                  with open("error_log.txt", "w", encoding="utf-8") as f:
+                      f.write(f"Hata: JSON verisi bulunamadı\nHam içerik (ilk 500 karakter): {raw_content[:500]}...\n")
                   exit(1)
           else:
               raw_content = raw_content[json_start:]
@@ -105,6 +119,8 @@ jobs:
           except json.JSONDecodeError as e:
               print(f"JSON ayrıştırma hatası: {e}")
               print(f"Ham içerik (ilk 500 karakter): {raw_content[:500]}...")
+              with open("error_log.txt", "w", encoding="utf-8") as f:
+                  f.write(f"JSON ayrıştırma hatası: {e}\nHam içerik (ilk 500 karakter): {raw_content[:500]}...\n")
               exit(1)
 
           # html2text'i başlat
@@ -153,6 +169,8 @@ jobs:
             raw_response.txt
             cleaned_response.txt
             json_response.txt
+            error_log.txt
+            debug_log.txt
 
       - name: Değişiklikleri kaydet ve gönder
         run: |
