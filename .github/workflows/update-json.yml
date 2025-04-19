@@ -30,6 +30,10 @@ jobs:
           import json
           import html2text
           import re
+          import sys
+
+          # Konsol çıktısını UTF-8'e zorla
+          sys.stdout.reconfigure(encoding='utf-8')
 
           # JSON URL'si
           url = "https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json"
@@ -70,16 +74,26 @@ jobs:
           var_data_start = raw_content.find('var data =')
           if var_data_start != -1:
               raw_content = raw_content[var_data_start + len('var data ='):].strip()
+              print("Bilgi: 'var data =' öneği bulundu ve kaldırıldı")
           else:
               print("Uyarı: 'var data =' öneği bulunamadı, JSON başlangıcını arıyoruz")
 
           # JSON başlangıcını bul
           json_start = raw_content.find('{"haberler":')
           if json_start == -1:
-              print("Hata: JSON verisi bulunamadı")
-              print(f"Ham içerik (ilk 500 karakter): {raw_content[:500]}...")
-              exit(1)
-          raw_content = raw_content[json_start:]
+              # Alternatif: JSON başlangıcını düzenli ifadeyle bul
+              json_match = re.search(r'\{"haberler":\s*\[', raw_content)
+              if json_match:
+                  json_start = json_match.start()
+                  raw_content = raw_content[json_start:]
+                  print("Bilgi: JSON başlangıcı düzenli ifadeyle bulundu")
+              else:
+                  print("Hata: JSON verisi bulunamadı")
+                  print(f"Ham içerik (ilk 500 karakter): {raw_content[:500]}...")
+                  exit(1)
+          else:
+              raw_content = raw_content[json_start:]
+              print("Bilgi: JSON başlangıcı bulundu")
 
           # JSON verisini kaydet (hata ayıklamak için)
           with open("json_response.txt", "w", encoding="utf-8") as f:
