@@ -2,7 +2,7 @@ name: Update JSON File
 
 on:
   schedule:
-    - cron: '0 */3 * * *' # Her 3 saatte bir çalıştırılır
+    - cron: '0 */3 * * *' # Run Grok every 3 hours
   workflow_dispatch:
 
 jobs:
@@ -29,37 +29,36 @@ jobs:
           const iconv = require("iconv-lite");
           const cheerio = require("cheerio");
 
-          // Türkçe karakter dönüşümleri için harita
+          // Turkish character and HTML entity mapping
           const charMap = {
             "&Ccedil;": "Ç", "&ccedil;": "ç",
             "&Ouml;": "Ö", "&ouml;": "ö",
             "&Uuml;": "Ü", "&uuml;": "ü",
             "&rsquo;": "'", "&nbsp;": " ",
-            "&ldquo;": '"', "&rdquo;": '"',
+            "&ldquo;": "\"", "&rdquo;": "\"",
             "&ndash;": "-", "&mdash;": "-",
             "&amp;": "&", "&lsquo;": "'",
             "&hellip;": "...", "&#39;": "'",
             "&deg;": "°", "&aacute;": "á",
             "&eacute;": "é", "&iacute;": "í",
             "&oacute;": "ó", "&uacute;": "ú",
-            "&ntilde;": "ñ", "&quot;": '"'
+            "&ntilde;": "ñ", "&quot;": "\""
           };
 
           function cleanHtml(html) {
             if (!html) return "";
-            
-            // HTML etiketlerini kaldır
+
+            // Load HTML with cheerio and extract text
             const $ = cheerio.load(html);
             let text = $.text();
-            
-            // HTML entity'leri dönüştür
+
+            // Replace HTML entities
             for (const [key, value] of Object.entries(charMap)) {
               text = text.replace(new RegExp(key, "g"), value);
             }
-            
-            // Fazla boşlukları temizle
+
+            // Clean up extra whitespace
             text = text.replace(/\s+/g, " ").trim();
-            
             return text;
           }
 
@@ -69,7 +68,7 @@ jobs:
 
           (async () => {
             try {
-              console.log("JSON dosyası çekiliyor...");
+              console.log("Fetching JSON file...");
               const response = await axios.get("https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json", {
                 headers: {
                   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
@@ -77,43 +76,42 @@ jobs:
                 responseType: 'arraybuffer'
               });
 
-              // Birden fazla kodlama denemesi
+              // Decode response with proper encoding
               let decodedData;
               try {
-                decodedData = iconv.decode(response.data, 'win1254').toString('utf8');
+                decodedData = iconv.decode(Buffer.from(response.data), 'win1254');
               } catch (e) {
-                decodedData = iconv.decode(response.data, 'utf8').toString('utf8');
+                console.log("Falling back to UTF-8 decoding...");
+                decodedData = iconv.decode(Buffer.from(response.data), 'utf8');
               }
-              
-              // BOM karakterini kaldır
+
+              // Remove BOM and clean up the JSON string
               decodedData = removeBom(decodedData);
-              
-              // JSON formatına uygun hale getirme
               const cleanedData = decodedData
-                .replace(/^var data\s*=\s*/, '')
-                .replace(/;[\s\r\n]*$/, '')
+                .replace(/^var data\s*=\s*/, '') // Remove "var data ="
+                .replace(/;[\s\r\n]*$/, '')      // Remove trailing semicolon
                 .trim();
 
+              // Parse JSON
               const jsonData = JSON.parse(cleanedData);
 
-              // Haberleri filtrele ve dönüştür
+              // Filter and transform news items
               const filteredNews = jsonData.haberler
-                .filter(item => item.haberkisa && item.haberkisa.trim() !== "")
+                .filter(item => item.haberkisa && item.haberkisa.trim() !== "") // Skip items with empty haberkisa
                 .map(item => ({
                   kategoriadi: item.kategoriadi,
                   haberresim: item.haberresim,
                   haberbaslik: item.haberbaslik,
                   haberkisa: item.haberkisa,
                   tarih: item.tarih,
-                  detay_url: cleanHtml(item.haberdetay)
+                  detay_url: cleanHtml(item.haberdetay) // Clean HTML in haberdetay
                 }));
 
-              // Yeni JSON dosyasını kaydetme
+              // Save the cleaned JSON to file
               await fs.writeFile('data-haberler.json', JSON.stringify(filteredNews, null, 2), 'utf8');
-              console.log("JSON dosyası başarıyla güncellendi.");
+              console.log("JSON file successfully updated.");
             } catch (error) {
-              console.error("Bir hata oluştu:", error);
-              // Hata detaylarını logla
+              console.error("An error occurred:", error.message);
               if (error.response) {
                 console.error("Response data:", error.response.data.toString('utf8'));
               }
@@ -129,5 +127,5 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add data-haberler.json
-          git commit -m "🔄 JSON dosyası otomatik güncellendi" || echo "Değişiklik yok"
-          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/yujin061/karabukhaberler-json.git"
+          git commit -m "🔄 JSON file automatically updated" || echo "No changes to commit"
+          git push
