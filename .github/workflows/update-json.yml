@@ -1,8 +1,8 @@
-name: JSON Dosyasını Güncelle
+name: Update JSON File
 
 on:
   schedule:
-    - cron: '0 */3 * * *' # Her 3 saatte bir çalışır
+    - cron: '0 */3 * * *' # Her 3 saatte bir çalıştırılır
   workflow_dispatch:
 
 jobs:
@@ -10,117 +10,63 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Depoyu kontrol et
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Node.js'i kur
+      - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '18'
 
-      - name: Bağımlılıkları yükle
-        run: npm install axios iconv-lite cheerio
-
-      - name: JSON'u çek ve güncelle
+      - name: Install dependencies
         run: |
-          node << 'EOF'
-          const axios = require("axios");
-          const fs = require("fs").promises;
-          const iconv = require("iconv-lite");
-          const cheerio = require("cheerio");
+          npm install axios iconv-lite cheerio
+          sudo apt-get install -y jq
 
-          // Türkçe karakter ve HTML varlıkları için eşleme
-          const charMap = {
-            "&Ccedil;": "Ç", "&ccedil;": "ç",
-            "&Ouml;": "Ö", "&ouml;": "ö",
-            "&Uuml;": "Ü", "&uuml;": "ü",
-            "&Scedil;": "Ş", "&scedil;": "ş",
-            "&Gbreve;": "Ğ", "&gbreve;": "ğ",
-            "&Idot;": "İ", "&inodot;": "ı",
-            "&rsquo;": "'", "&nbsp;": " ",
-            "&ldquo;": "\"", "&rdquo;": "\"",
-            "&ndash;": "-", "&mdash;": "-",
-            "&amp;": "&", "&lsquo;": "'",
-            "&hellip;": "...", "&#39;": "'",
-            "&deg;": "°", "&quot;": "\""
-          };
+      - name: Fetch and process JSON
+        run: |
+          # Ham veriyi indir
+          curl -s https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json -o raw.json
+          
+          # Veriyi temizle ve dönüştür
+          sed -i 's/^var data = //' raw.json
+          sed -i 's/;$//' raw.json
+          
+          # Kodlama sorunlarını düzelt
+          iconv -f WINDOWS-1254 -t UTF-8 raw.json -o cleaned.json || iconv -f ISO-8859-9 -t UTF-8 raw.json -o cleaned.json
+          
+          # JSON'u işle ve filtrele
+          jq '[.haberler[] | select(.haberkisa? and .haberkisa != "") | {
+            kategoriadi: .kategoriadi,
+            haberresim: .haberresim,
+            haberbaslik: .haberbaslik,
+            haberkisa: .haberkisa,
+            tarih: .tarih,
+            detay_url: (.haberdetay | gsub("<[^>]*>"; "") 
+              | gsub("&Ccedil;"; "Ç") | gsub("&ccedil;"; "ç")
+              | gsub("&Ouml;"; "Ö") | gsub("&ouml;"; "ö")
+              | gsub("&Uuml;"; "Ü") | gsub("&uuml;"; "ü")
+              | gsub("&rsquo;"; "'") | gsub("&nbsp;"; " ")
+              | gsub("&[^;]*;"; "") 
+              | gsub("\\n"; " ") | gsub("\\s+"; " ") | trim)
+          }]' cleaned.json > data-haberler.json
+          
+          # Debug için ham veriyi kaydet
+          cp raw.json debug_raw.json
+          cp cleaned.json debug_cleaned.json
 
-          function cleanHtml(html) {
-            if (!html) return "";
+      - name: Upload debug files
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-files
+          path: |
+            debug_*.json
+            raw.json
+            cleaned.json
 
-            // HTML'yi cheerio ile yükle ve metni çıkar
-            const $ = cheerio.load(html);
-            let text = $.text();
-
-            // HTML varlıklarını dönüştür
-            for (const [key, value] of Object.entries(charMap)) {
-              text = text.replace(new RegExp(key, "g"), value);
-            }
-
-            // Fazla boşlukları temizle
-            text = text.replace(/\s+/g, " ").trim();
-            return text;
-          }
-
-          function removeBom(str) {
-            return str.replace(/^\uFEFF/, '');
-          }
-
-          (async () => {
-            try {
-              console.log("JSON dosyası çekiliyor...");
-              const response = await axios.get("https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json", {
-                headers: {
-                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
-                },
-                responseType: 'arraybuffer'
-              });
-
-              // Yanıtı uygun kodlamayla çöz
-              let decodedData;
-              try {
-                decodedData = iconv.decode(Buffer.from(response.data), 'win1254');
-              } catch (e) {
-                console.log("UTF-8 kodlamasına geri dönülüyor...");
-                decodedData = iconv.decode(Buffer.from(response.data), 'utf8');
-              }
-
-              // BOM karakterini kaldır ve JSON string'ini temizle
-              decodedData = removeBom(decodedData);
-              const cleanedData = decodedData
-                .replace(/^var data\s*=\s*/, '') // "var data =" kısmını kaldır
-                .replace(/;[\s\r\n]*$/, '')      // Sonda varsa noktalı virgülü kaldır
-                .trim();
-
-              // JSON'u ayrıştır
-              const jsonData = JSON.parse(cleanedData);
-
-              // Haberleri filtrele ve dönüştür
-              const filteredNews = jsonData.haberler
-                .filter(item => item.haberkisa && item.haberkisa.trim() !== "") // haberkisa boş olanları atla
-                .map(item => ({
-                  kategoriadi: item.kategoriadi,
-                  haberresim: item.haberresim,
-                  haberbaslik: item.haberbaslik,
-                  haberkisa: item.haberkisa,
-                  tarih: item.tarih,
-                  detay_url: cleanHtml(item.haberdetay) // haberdetay'daki HTML'yi temizle
-                }));
-
-              // Temizlenmiş JSON'u dosyaya kaydet
-              await fs.writeFile('data-haberler.json', JSON.stringify(filteredNews, null, 2), 'utf8');
-              console.log("JSON dosyası başarıyla güncellendi.");
-            } catch (error) {
-              console.error("Bir hata oluştu:", error.message);
-              if (error.response) {
-                console.error("Yanıt verisi:", error.response.data.toString('utf8'));
-              }
-              process.exit(1);
-            }
-          })();
-          EOF
-
-      - name: Değişiklikleri kaydet ve gönder
+      - name: Commit and push changes
+        if: success()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -128,4 +74,4 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add data-haberler.json
           git commit -m "🔄 JSON dosyası otomatik güncellendi" || echo "Değişiklik yok"
-          git push
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/yujin061/karabukhaberler-json.git"
