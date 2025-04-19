@@ -30,12 +30,7 @@ jobs:
             haberbaslik: .haberbaslik,
             haberkisa: .haberkisa,
             tarih: .tarih,
-            detay_url: (.haberdetay | gsub("<[^>]*>"; "") 
-              | gsub("&quot;"; "\"") 
-              | gsub("&[^;]*;"; "")  # Tüm HTML entity'leri kaldır (basit çözüm)
-              | gsub("\\n"; " ") 
-              | gsub("\\s+"; " ") 
-              | trim)
+            detay_url: (.haberdetay | gsub("<[^>]*>"; "") | gsub("&quot;"; "\"") | gsub("&[^;]*;"; "") | gsub("\\n"; " ") | gsub("\\s+"; " ") | trim)
           }]' temp.json > data-haberler.json
 
       - name: Değişiklikleri commit ve push et
