@@ -1,36 +1,23 @@
-name: Karabuk Haberler JSON Güncelleme
+#!/bin/bash
 
-on:
-  schedule:
-    - cron: '0 */4 * * *' # Her 4 saatte bir çalıştırılır
-  workflow_dispatch: # Manuel tetikleme için
+# JSON verisini çek ve raw-data.json dosyasına kaydet
+curl -s https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json -o raw-data.json
 
-jobs:
-  update-json:
-    runs-on: ubuntu-latest
+# raw-data.json dosyasını kontrol et ve temizle
+cat raw-data.json | \
+sed 's/^var data = //' | sed 's/;$//' | \
+jq '[.haberler[] | select(.haberkisa != "") | {
+  kategoriadi: .kategoriadi,
+  haberresim: .haberresim,
+  haberbaslik: .haberbaslik,
+  haberkisa: .haberkisa,
+  tarih: .tarih,
+  detay_url: (.haberdetay | gsub("<[^>]*>"; "") | gsub("&quot;"; "\"") | gsub("&Ccedil;"; "Ç") | gsub("&ccedil;"; "ç") | gsub("&Ouml;"; "Ö") | gsub("&ouml;"; "ö") | gsub("&Uuml;"; "Ü") | gsub("&uuml;"; "ü") | gsub("&rsquo;"; "’") | gsub("&nbsp;"; " ") | gsub("&ldquo;"; "“") | gsub("&rdquo;"; "”"))
+}]' > data-haberler.json
 
-    steps:
-      - name: Repository'i checkout yap
-        uses: actions/checkout@v4
-
-      - name: JSON verisini çek ve düzenle
-        run: |
-          curl -s https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json -o raw-data.json
-          cat raw-data.json | \
-          sed 's/^var data = //' | sed 's/;$//' | \
-          jq '[.haberler[] | select(.haberkisa != "") | {
-            kategoriadi: .kategoriadi,
-            haberresim: .haberresim,
-            haberbaslik: .haberbaslik,
-            haberkisa: .haberkisa,
-            tarih: .tarih,
-            detay_url: (.haberdetay | gsub("<[^>]*>"; "") | gsub("&quot;"; "\"") | gsub("&Ccedil;"; "Ç") | gsub("&ccedil;"; "ç") | gsub("&Ouml;"; "Ö") | gsub("&ouml;"; "ö") | gsub("&Uuml;"; "Ü") | gsub("&uuml;"; "ü") | gsub("&rsquo;"; "’") | gsub("&nbsp;"; " ") | gsub("&ldquo;"; "“") | gsub("&rdquo;"; "”"))
-          }]' > data-haberler.json
-
-      - name: Değişiklikleri commit et
-        run: |
-          git config --global user.name 'GitHub Actions'
-          git config --global user.email 'actions@github.com'
-          git add data-haberler.json
-          git commit -m "JSON dosyası güncellendi"
-          git push
+# İşlem tamamlandığında mesaj göster
+if [ $? -eq 0 ]; then
+  echo "JSON verisi başarıyla işlendi ve data-haberler.json dosyasına kaydedildi."
+else
+  echo "Bir hata oluştu, lütfen verileri kontrol edin."
+fi
