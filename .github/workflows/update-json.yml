@@ -50,32 +50,30 @@ jobs:
           with open("raw_response.txt", "w", encoding="utf-8") as f:
               f.write(raw_content)
 
-          # Çöp karakterleri temizle (ASCII olmayan karakterler)
-          raw_content = ''.join(c for c in raw_content if ord(c) < 128 or c in 'şçğüöıŞÇĞÜÖİ')
+          # BOM ve çöp karakterleri kaldır (örneğin, 뿯붿)
+          raw_content = raw_content.encode('utf-8', errors='ignore').decode('utf-8', errors='ignore')
+          raw_content = raw_content.lstrip('\ufeff\uefff')  # BOM karakterlerini kaldır
 
-          # 'var data =' önekini kaldır
+          # 'var data =' önekini bul ve kaldır
           var_data_start = raw_content.find('var data =')
           if var_data_start != -1:
               raw_content = raw_content[var_data_start + len('var data ='):].strip()
           else:
-              print("Uyarı: 'var data =' öneği bulunamadı, ham veriyi olduğu gibi işliyoruz")
+              print("Uyarı: 'var data =' öneği bulunamadı, JSON başlangıcını arıyoruz")
 
           # JSON başlangıcını bul
           json_start = raw_content.find('{"haberler":')
           if json_start == -1:
-              # Alternatif: Düzenli ifadeyle JSON içeriğini çıkar
-              json_match = re.search(r'\{"haberler":\s*\[[\s\S]*?\]\s*\}', raw_content)
-              if json_match:
-                  raw_content = json_match.group(0)
-              else:
-                  print("Hata: JSON verisi bulunamadı")
-                  print(f"Ham içerik (ilk 500 karakter): {raw_content[:500]}...")
-                  exit(1)
-          else:
-              raw_content = raw_content[json_start:]
+              print("Hata: JSON verisi bulunamadı")
+              print(f"Ham içerik (ilk 500 karakter): {raw_content[:500]}...")
+              with open("cleaned_response.txt", "w", encoding="utf-8") as f:
+                  f.write(raw_content)
+              exit(1)
+          raw_content = raw_content[json_start:]
 
-          # Bozuk karakterleri temizle ve UTF-8'e zorla
-          raw_content = raw_content.encode('utf-8', errors='ignore').decode('utf-8', errors='ignore')
+          # Temizlenmiş veriyi dosyaya kaydet (hata ayıklamak için)
+          with open("cleaned_response.txt", "w", encoding="utf-8") as f:
+              f.write(raw_content)
 
           # JSON'u ayrıştır
           try:
@@ -122,12 +120,14 @@ jobs:
               json.dump(cleaned_data, f, ensure_ascii=False, indent=2)
           EOF
 
-      - name: Ham yanıtı artifact olarak yükle
+      - name: Ham ve temizlenmiş yanıtları artifact olarak yükle
         if: failure() # Hata durumunda çalışır
         uses: actions/upload-artifact@v4
         with:
-          name: raw-response
-          path: raw_response.txt
+          name: response-files
+          path: |
+            raw_response.txt
+            cleaned_response.txt
 
       - name: Değişiklikleri kaydet ve gönder
         run: |
