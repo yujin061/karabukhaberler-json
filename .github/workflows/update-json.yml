@@ -2,28 +2,28 @@ name: Update JSON Data
 
 on:
   schedule:
-    - cron: '0 */3 * * *' # Her 3 saatte bir çalıştırılır
-  workflow_dispatch: # Allows manual triggering
+    - cron: '0 */3 * * *' # Her 3 saatte bir çalışır
+  workflow_dispatch: # Manuel tetikleme
 
 jobs:
   update-json:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Depoyu çek
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Python'u kur
         uses: actions/setup-python@v5
         with:
           python-version: '3.x'
 
-      - name: Install dependencies
+      - name: Bağımlılıkları yükle
         run: |
           python -m pip install --upgrade pip
           pip install requests html2text
 
-      - name: Fetch and process JSON
+      - name: JSON'u çek ve işle
         run: |
           python - <<EOF
           import requests
@@ -31,47 +31,54 @@ jobs:
           import html2text
           import re
 
-          # Fetch JSON from URL
+          # JSON URL'si
           url = "https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json"
-          response = requests.get(url)
-          response.raise_for_status()
+          headers = {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+          }
 
-          # Remove 'var data =' prefix and clean the content
+          # JSON'u çek
+          try:
+              response = requests.get(url, headers=headers, timeout=10)
+              response.raise_for_status()
+          except requests.exceptions.RequestException as e:
+              print(f"Veri çekme hatası: {e}")
+              exit(1)
+
+          # 'var data =' önekini kaldır ve içeriği temizle
           raw_content = response.text
           if raw_content.startswith("var data ="):
               raw_content = raw_content[len("var data ="):].strip()
-          
-          # Parse JSON
+
+          # JSON'u ayrıştır
           try:
               data = json.loads(raw_content)
           except json.JSONDecodeError as e:
-              print(f"JSON parsing error: {e}")
+              print(f"JSON ayrıştırma hatası: {e}")
               exit(1)
 
-          # Initialize html2text
+          # html2text'i başlat
           h = html2text.Html2text()
           h.ignore_links = True
           h.ignore_images = True
           h.body_width = 0
 
-          # Process entries
+          # Verileri işle
           cleaned_data = []
           for item in data.get("haberler", []):
-              # Skip if haberkisa is empty
+              # haberkisa boşsa atla
               if not item.get("haberkisa"):
                   continue
 
-              # Clean haberdetay to plain text
+              # haberdetay'ı düz metne çevir
               haberdetay = item.get("haberdetay", "")
               if haberdetay:
-                  # Convert HTML to plain text
                   plain_text = h.handle(haberdetay)
-                  # Clean up extra whitespace and newlines
                   plain_text = re.sub(r'\n\s*\n', '\n', plain_text.strip())
               else:
                   plain_text = ""
 
-              # Create cleaned entry
+              # Temizlenmiş veriyi oluştur
               cleaned_item = {
                   "kategoriadi": item.get("kategoriadi", ""),
                   "haberresim": item.get("haberresim", ""),
@@ -82,17 +89,17 @@ jobs:
               }
               cleaned_data.append(cleaned_item)
 
-          # Write to data-haberler.json
+          # data-haberler.json'a yaz
           with open("data-haberler.json", "w", encoding="utf-8") as f:
               json.dump(cleaned_data, f, ensure_ascii=False, indent=2)
           EOF
 
-      - name: Commit and push changes
+      - name: Değişiklikleri kaydet ve gönder
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add data-haberler.json
-          git diff --quiet && git diff --staged --quiet || git commit -m "Update data-haberler.json with latest news"
+          git diff --quiet && git diff --staged --quiet || git commit -m "data-haberler.json güncellendi"
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
