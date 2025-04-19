@@ -19,13 +19,14 @@ jobs:
           node-version: '18'
 
       - name: Install dependencies
-        run: npm install axios cheerio
+        run: npm install axios iconv-lite cheerio
 
       - name: Fetch and update JSON
         run: |
           node << 'EOF'
           const axios = require("axios");
           const fs = require("fs").promises;
+          const iconv = require("iconv-lite");
           const cheerio = require("cheerio");
 
           // Türkçe karakter dönüşümleri için harita
@@ -41,14 +42,15 @@ jobs:
             "&deg;": "°", "&aacute;": "á",
             "&eacute;": "é", "&iacute;": "í",
             "&oacute;": "ó", "&uacute;": "ú",
-            "&ntilde;": "ñ"
+            "&ntilde;": "ñ", "&quot;": '"'
           };
 
           function cleanHtml(html) {
             if (!html) return "";
             
             // HTML etiketlerini kaldır
-            let text = html.replace(/<[^>]*>/g, " ");
+            const $ = cheerio.load(html);
+            let text = $.text();
             
             // HTML entity'leri dönüştür
             for (const [key, value] of Object.entries(charMap)) {
@@ -67,11 +69,19 @@ jobs:
               const response = await axios.get("https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json", {
                 headers: {
                   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
-                }
+                },
+                responseType: 'arraybuffer' // Binary veri olarak al
               });
 
+              // İçeriği doğru karakter kodlamasıyla dönüştür
+              const decodedData = iconv.decode(response.data, 'win1254').toString('utf8');
+              
               // JSON formatına uygun hale getirme
-              const cleanedData = response.data.replace(/var data = /, '').replace(/;$/, '');
+              const cleanedData = decodedData
+                .replace(/^var data\s*=\s*/, '')
+                .replace(/;[\s\r\n]*$/, '')
+                .trim();
+
               const jsonData = JSON.parse(cleanedData);
 
               // Haberleri filtrele ve dönüştür
@@ -87,7 +97,7 @@ jobs:
                 }));
 
               // Yeni JSON dosyasını kaydetme
-              await fs.writeFile('data-haberler.json', JSON.stringify(filteredNews, null, 2));
+              await fs.writeFile('data-haberler.json', JSON.stringify(filteredNews, null, 2), 'utf8');
               console.log("JSON dosyası başarıyla güncellendi.");
             } catch (error) {
               console.error("Bir hata oluştu:", error);
