@@ -50,19 +50,21 @@ jobs:
           with open("raw_response.txt", "w", encoding="utf-8") as f:
               f.write(raw_content)
 
-          # Çöp karakterleri ve 'var data =' önekini kaldır
-          # Önce 'var data =' önekini bulmaya çalış
+          # Çöp karakterleri temizle (ASCII olmayan karakterler)
+          raw_content = ''.join(c for c in raw_content if ord(c) < 128 or c in 'şçğüöıŞÇĞÜÖİ')
+
+          # 'var data =' önekini kaldır
           var_data_start = raw_content.find('var data =')
           if var_data_start != -1:
               raw_content = raw_content[var_data_start + len('var data ='):].strip()
           else:
               print("Uyarı: 'var data =' öneği bulunamadı, ham veriyi olduğu gibi işliyoruz")
 
-          # JSON başlangıcını bul (çöp karakterleri atla)
+          # JSON başlangıcını bul
           json_start = raw_content.find('{"haberler":')
           if json_start == -1:
-              # Alternatif: Düzenli ifadeyle JSON benzeri içeriği çıkar
-              json_match = re.search(r'\{"haberler":\s*\[.*?\]\s*\}', raw_content, re.DOTALL)
+              # Alternatif: Düzenli ifadeyle JSON içeriğini çıkar
+              json_match = re.search(r'\{"haberler":\s*\[[\s\S]*?\]\s*\}', raw_content)
               if json_match:
                   raw_content = json_match.group(0)
               else:
@@ -72,7 +74,7 @@ jobs:
           else:
               raw_content = raw_content[json_start:]
 
-          # Bozuk karakterleri temizle
+          # Bozuk karakterleri temizle ve UTF-8'e zorla
           raw_content = raw_content.encode('utf-8', errors='ignore').decode('utf-8', errors='ignore')
 
           # JSON'u ayrıştır
