@@ -2,7 +2,7 @@ name: Karabuk Haberler JSON Güncelleme
 
 on:
   schedule:
-    - cron: '0 */4 * * *' # Her saat çalıştırılır
+    - cron: '0 */4 * * *' # Her 4 saatte bir çalıştırılır
   workflow_dispatch: # Manuel tetikleme için
 
 jobs:
@@ -24,13 +24,13 @@ jobs:
             haberbaslik: .haberbaslik,
             haberkisa: .haberkisa,
             tarih: .tarih,
-            detay_url: (.haberdetay | gsub("<[^>]*>"; "") | gsub("&quot;"; "\"") | gsub("&Ccedil;"; "Ç") | gsub("&ccedil;"; "ç") | gsub("&Ouml;"; "Ö") | gsub("&ouml;"; "ö") | gsub("&Uuml;"; "Ü") | gsub("&uuml;"; "ü") | gsub("&rsquo;"; "’") | gsub("&nbsp;"; " ") | gsub("&ldquo;"; "“") | gsub("&rdquo;"; "”") | gsub("&ndash;"; "–") | gsub("&mdash;"; "—") | gsub("&amp;"; "&") | gsub("&lsquo;"; "‘") | gsub("&hellip;"; "…") | gsub("&aacute;"; "á") | gsub("&eacute;"; "é") | gsub("&iacute;"; "í") | gsub("&oacute;"; "ó") | gsub("&uacute;"; "ú") | gsub("&ntilde;"; "ñ") | gsub("&uuml;"; "ü") | gsub("&#39;"; "'") | gsub("&deg;"; "°") | gsub("\n"; "") | gsub("\t"; "") | gsub(" +"; " ") | trim)
+            detay_url: (.haberdetay | gsub("<[^>]*>"; "") | gsub("&quot;"; "\"") | gsub("&Ccedil;"; "Ç") | gsub("&ccedil;"; "ç") | gsub("&Ouml;"; "Ö") | gsub("&ouml;"; "ö") | gsub("&Uuml;"; "Ü") | gsub("&uuml;"; "ü") | gsub("&rsquo;"; "’") | gsub("&nbsp;"; " ") | gsub("&ldquo;"; "“") | gsub("&rdquo;"; "”"))
           }]' > data-haberler.json
 
-      - name: Değişiklikleri commit ve push et
+      - name: Değişiklikleri commit et
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
           git add data-haberler.json
-          git commit -m "🔄 data-haberler.json otomatik olarak güncellendi" || echo "Değişiklik yok"
+          git commit -m "JSON dosyası güncellendi"
           git push
