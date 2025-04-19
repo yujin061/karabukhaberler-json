@@ -5,7 +5,7 @@ import requests
 from bs4 import BeautifulSoup
 
 def fetch_raw_data(url, retries=3):
-    """Web sitesinden ham JSON verisini çeker."""
+    """Web sitesinden ham JSON verisini çeker, BOM'u temizler."""
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     }
@@ -13,7 +13,8 @@ def fetch_raw_data(url, retries=3):
         try:
             response = requests.get(url, headers=headers, timeout=10)
             response.raise_for_status()
-            return response.text
+            # UTF-8 BOM'u temizlemek için utf-8-sig kullanıyoruz
+            return response.content.decode('utf-8-sig')
         except requests.RequestException as e:
             write_error_log(f"Veri çekme hatası (Deneme {attempt+1}/{retries}): {str(e)}")
     raise Exception("Veri çekme başarısız.")
