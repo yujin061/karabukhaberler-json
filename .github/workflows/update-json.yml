@@ -1,9 +1,9 @@
-name: Update JSON File
+name: Update JSON Data
 
 on:
   schedule:
     - cron: '0 */3 * * *' # Her 3 saatte bir çalıştırılır
-  workflow_dispatch:
+  workflow_dispatch: # Allows manual triggering
 
 jobs:
   update-json:
@@ -13,93 +13,86 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          node-version: '18'
+          python-version: '3.x'
 
       - name: Install dependencies
         run: |
-          npm install axios iconv-lite cheerio
-          sudo apt-get update
-          sudo apt-get install -y jq
+          python -m pip install --upgrade pip
+          pip install requests html2text
 
       - name: Fetch and process JSON
         run: |
-          # Ham veriyi indir
-          curl -s https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json -o raw.json
-          
-          # Veriyi temizle ve dönüştür
-          sed -i 's/^var data = //' raw.json
-          sed -i 's/;$//' raw.json
-          
-          # Node.js ile karakter kodlamasını düzelt
-          node -e "
-            const fs = require('fs');
-            const iconv = require('iconv-lite');
-            
-            // Ham veriyi oku (Windows-1254 veya ISO-8859-9 olabilir)
-            const rawData = fs.readFileSync('raw.json');
-            
-            // Önce Windows-1254 ile deneyelim
-            try {
-              const decoded = iconv.decode(rawData, 'windows-1254');
-              fs.writeFileSync('cleaned.json', decoded);
-            } catch (e) {
-              // Windows-1254 başarısız olursa ISO-8859-9 ile deneyelim
-              const decoded = iconv.decode(rawData, 'iso-8859-9');
-              fs.writeFileSync('cleaned.json', decoded);
-            }
-          "
-          
-          # JSON'u işle ve filtrele
-          jq '
-            [.haberler[] | select(.haberkisa? and .haberkisa != "") | {
-              kategoriadi: .kategoriadi,
-              haberresim: .haberresim,
-              haberbaslik: .haberbaslik,
-              haberkisa: .haberkisa,
-              tarih: .tarih,
-              detay_url: (
-                (.haberdetay // "") | 
-                gsub("<[^>]*>"; "") | 
-                gsub("&Ccedil;"; "Ç") | 
-                gsub("&ccedil;"; "ç") | 
-                gsub("&Ouml;"; "Ö") | 
-                gsub("&ouml;"; "ö") | 
-                gsub("&Uuml;"; "Ü") | 
-                gsub("&uuml;"; "ü") | 
-                gsub("&rsquo;"; "'") | 
-                gsub("&nbsp;"; " ") | 
-                gsub("&[^;]*;"; "") | 
-                gsub("\\n"; " ") | 
-                gsub("\\s+"; " ") | 
-                trim
-              )
-            }]
-          ' cleaned.json > data-haberler.json
-          
-          # Debug için ham veriyi kaydet
-          cp raw.json debug_raw.json
-          cp cleaned.json debug_cleaned.json
+          python - <<EOF
+          import requests
+          import json
+          import html2text
+          import re
 
-      - name: Upload debug files
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: debug-files
-          path: |
-            debug_*.json
-            raw.json
-            cleaned.json
+          # Fetch JSON from URL
+          url = "https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json"
+          response = requests.get(url)
+          response.raise_for_status()
+
+          # Remove 'var data =' prefix and clean the content
+          raw_content = response.text
+          if raw_content.startswith("var data ="):
+              raw_content = raw_content[len("var data ="):].strip()
+          
+          # Parse JSON
+          try:
+              data = json.loads(raw_content)
+          except json.JSONDecodeError as e:
+              print(f"JSON parsing error: {e}")
+              exit(1)
+
+          # Initialize html2text
+          h = html2text.Html2text()
+          h.ignore_links = True
+          h.ignore_images = True
+          h.body_width = 0
+
+          # Process entries
+          cleaned_data = []
+          for item in data.get("haberler", []):
+              # Skip if haberkisa is empty
+              if not item.get("haberkisa"):
+                  continue
+
+              # Clean haberdetay to plain text
+              haberdetay = item.get("haberdetay", "")
+              if haberdetay:
+                  # Convert HTML to plain text
+                  plain_text = h.handle(haberdetay)
+                  # Clean up extra whitespace and newlines
+                  plain_text = re.sub(r'\n\s*\n', '\n', plain_text.strip())
+              else:
+                  plain_text = ""
+
+              # Create cleaned entry
+              cleaned_item = {
+                  "kategoriadi": item.get("kategoriadi", ""),
+                  "haberresim": item.get("haberresim", ""),
+                  "haberbaslik": item.get("haberbaslik", ""),
+                  "haberkisa": item.get("haberkisa", ""),
+                  "tarih": item.get("tarih", ""),
+                  "detay_url": plain_text
+              }
+              cleaned_data.append(cleaned_item)
+
+          # Write to data-haberler.json
+          with open("data-haberler.json", "w", encoding="utf-8") as f:
+              json.dump(cleaned_data, f, ensure_ascii=False, indent=2)
+          EOF
 
       - name: Commit and push changes
-        if: success()
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add data-haberler.json
+          git diff --quiet && git diff --staged --quiet || git commit -m "Update data-haberler.json with latest news"
+          git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add data-haberler.json
-          git commit -m "🔄 JSON dosyası otomatik güncellendi" || echo "Değişiklik yok"
-          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/yujin061/karabukhaberler-json.git"
