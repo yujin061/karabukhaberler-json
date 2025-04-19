@@ -2,7 +2,7 @@ name: Update JSON File
 
 on:
   schedule:
-    - cron: '0 */3 * * *' # Her 3 saatte bir çalıştırılır
+    - cron: '0 */3 * * *' # Her 3 saatte bir çalışır
   workflow_dispatch:
 
 jobs:
@@ -19,67 +19,17 @@ jobs:
           node-version: '18'
 
       - name: Install dependencies
-        run: |
-          npm install axios iconv-lite cheerio
-          sudo apt-get update
-          sudo apt-get install -y jq
+        run: npm install axios iconv-lite cheerio
 
       - name: Fetch and process JSON
         run: |
           # Ham veriyi indir
           curl -s https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json -o raw.json
           
-          # Veriyi temizle ve dönüştür
-          sed -i 's/^var data = //' raw.json
-          sed -i 's/;$//' raw.json
+          # Node.js betiği ile JSON'u işle
+          node process-json.js
           
-          # Node.js ile karakter kodlamasını düzelt
-          node -e "
-            const fs = require('fs');
-            const iconv = require('iconv-lite');
-            
-            // Ham veriyi oku (Windows-1254 veya ISO-8859-9 olabilir)
-            const rawData = fs.readFileSync('raw.json');
-            
-            // Önce Windows-1254 ile deneyelim
-            try {
-              const decoded = iconv.decode(rawData, 'windows-1254');
-              fs.writeFileSync('cleaned.json', decoded);
-            } catch (e) {
-              // Windows-1254 başarısız olursa ISO-8859-9 ile deneyelim
-              const decoded = iconv.decode(rawData, 'iso-8859-9');
-              fs.writeFileSync('cleaned.json', decoded);
-            }
-          "
-          
-          # JSON'u işle ve filtrele
-          jq '
-            [.haberler[] | select(.haberkisa? and .haberkisa != "") | {
-              kategoriadi: .kategoriadi,
-              haberresim: .haberresim,
-              haberbaslik: .haberbaslik,
-              haberkisa: .haberkisa,
-              tarih: .tarih,
-              detay_url: (
-                .haberdetay // "" |
-                gsub("<[^>]*>"; "") |
-                gsub("&Ccedil;"; "Ç") |
-                gsub("&ccedil;"; "ç") |
-                gsub("&Ouml;"; "Ö") |
-                gsub("&ouml;"; "ö") |
-                gsub("&Uuml;"; "Ü") |
-                gsub("&uuml;"; "ü") |
-                gsub("&rsquo;"; "'") |
-                gsub("&nbsp;"; " ") |
-                gsub("&[^;]*;"; "") |
-                gsub("\\n"; " ") |
-                gsub("\\s+"; " ") |
-                trim
-              )
-            }]
-          ' cleaned.json > data-haberler.json
-          
-          # Debug için ham veriyi kaydet
+          # Debug için ham ve temizlenmiş veriyi kaydet
           cp raw.json debug_raw.json
           cp cleaned.json debug_cleaned.json
 
@@ -101,5 +51,4 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add data-haberler.json
-          git commit -m "🔄 JSON dosyası otomatik güncellendi" || echo "Değişiklik yok"
-          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/yujin061/karabukhaberler-json.git"
+          git diff --staged --quiet || (git commit -m "🔄 JSON dosyası otomatik güncellendi" && git push "https://x-access-token:${GITHUB_TOKEN}@github.com/yujin061/karabukhaberler-json.git")
