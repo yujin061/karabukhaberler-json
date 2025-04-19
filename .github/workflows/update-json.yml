@@ -1,145 +1,36 @@
-name: Update JSON File
+name: Karabuk Haberler JSON Güncelleme
 
 on:
   schedule:
     - cron: '0 */4 * * *' # Her saat çalıştırılır
-  workflow_dispatch:
+  workflow_dispatch: # Manuel tetikleme için
 
 jobs:
   update-json:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: Repository'i checkout yap
+        uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '16'
-
-      - name: Install dependencies
-        run: npm install axios iconv-lite
-
-      - name: Fetch and update JSON
+      - name: JSON verisini çek ve düzenle
         run: |
-          node << 'EOF'
-          const axios = require("axios");
-          const fs = require("fs").promises;
-          const iconv = require("iconv-lite");
+          curl -s https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json | \
+          sed 's/^var data = //' | \
+          sed 's/;$//' | \
+          jq '[.haberler[] | select(.haberkisa != "") | {
+            kategoriadi: .kategoriadi,
+            haberresim: .haberresim,
+            haberbaslik: .haberbaslik,
+            haberkisa: .haberkisa,
+            tarih: .tarih,
+            detay_url: (.haberdetay | gsub("<[^>]*>"; "") | gsub("&quot;"; "\"") | gsub("&Ccedil;"; "Ç") | gsub("&ccedil;"; "ç") | gsub("&Ouml;"; "Ö") | gsub("&ouml;"; "ö") | gsub("&Uuml;"; "Ü") | gsub("&uuml;"; "ü") | gsub("&rsquo;"; "’") | gsub("&nbsp;"; " ") | gsub("&ldquo;"; "“") | gsub("&rdquo;"; "”") | gsub("&ndash;"; "–") | gsub("&mdash;"; "—") | gsub("&amp;"; "&") | gsub("&lsquo;"; "‘") | gsub("&hellip;"; "…") | gsub("&aacute;"; "á") | gsub("&eacute;"; "é") | gsub("&iacute;"; "í") | gsub("&oacute;"; "ó") | gsub("&uacute;"; "ú") | gsub("&ntilde;"; "ñ") | gsub("&uuml;"; "ü") | gsub("&#39;"; "'") | gsub("&deg;"; "°") | gsub("\n"; "") | gsub("\t"; "") | gsub(" +"; " ") | trim)
+          }]' > data-haberler.json
 
-          (async () => {
-            try {
-              console.log("JSON dosyası çekiliyor...");
-              const response = await axios.get("https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json", {
-                headers: {
-                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
-                },
-                responseType: 'arraybuffer'
-              });
-
-              console.log("Veri alındı, boyut:", response.data.length, "bytes");
-              
-              // Farklı kodlamaları deneme
-              let jsonData = null;
-              const encodings = ['UTF-8', 'UTF-16LE', 'UTF-16BE', 'ISO-8859-1'];
-              
-              for (const encoding of encodings) {
-                try {
-                  console.log(`${encoding} kodlaması deneniyor...`);
-                  const decodedData = iconv.decode(response.data, encoding);
-                  
-                  // İlk 100 karakteri kontrol et
-                  console.log(`İlk 100 karakter (${encoding}):`, decodedData.substring(0, 100));
-                  
-                  // "var data = " ve sonundaki ";" kaldırma
-                  let cleanedData = decodedData
-                    .replace(/^[\ufeff\ufffe]?var\s+data\s*=\s*/, '')
-                    .replace(/;[\s\n\r]*$/, '');
-                  
-                  // JSON formatını düzeltme denemeleri
-                  try {
-                    jsonData = JSON.parse(cleanedData);
-                    console.log(`${encoding} ile başarılı parse! Veri tipi:`, typeof jsonData);
-                    console.log("Veri örneği:", JSON.stringify(jsonData).substring(0, 200) + "...");
-                    break; // Başarılı parse edildiyse döngüden çık
-                  } catch (parseError) {
-                    console.log(`${encoding} ile parse hatası:`, parseError.message);
-                    
-                    // JSON Array olarak dene
-                    try {
-                      jsonData = JSON.parse(`[${cleanedData}]`);
-                      console.log(`${encoding} ile array olarak parse başarılı!`);
-                      break;
-                    } catch (arrayError) {
-                      console.log(`Array parse hatası:`, arrayError.message);
-                    }
-                    
-                    // Özel karakterleri temizleme dene
-                    try {
-                      const sanitizedData = cleanedData
-                        .replace(/\\"/g, '\\"')
-                        .replace(/\n/g, '\\n')
-                        .replace(/\r/g, '\\r')
-                        .replace(/\t/g, '\\t');
-                      
-                      jsonData = JSON.parse(sanitizedData);
-                      console.log(`${encoding} ile sanitize sonrası parse başarılı!`);
-                      break;
-                    } catch (sanitizeError) {
-                      console.log(`Sanitize sonrası parse hatası:`, sanitizeError.message);
-                    }
-                  }
-                } catch (encodingError) {
-                  console.log(`${encoding} kodlama hatası:`, encodingError.message);
-                }
-              }
-
-              if (jsonData) {
-                // Yeni JSON dosyasını kaydetme
-                await fs.writeFile('data-haberler.json', JSON.stringify(jsonData, null, 2));
-                console.log("JSON dosyası güncellendi.");
-                
-                // Veri istatistikleri
-                if (Array.isArray(jsonData)) {
-                  console.log(`Toplam ${jsonData.length} kayıt bulundu.`);
-                } else {
-                  console.log("Veri bir array değil, nesne yapısı:", Object.keys(jsonData));
-                }
-              } else {
-                console.error("Hiçbir kodlama ile JSON parse edilemedi!");
-                
-                // Ham veriyi kaydet
-                await fs.writeFile('raw-data.txt', iconv.decode(response.data, 'UTF-8'));
-                console.log("Ham veri raw-data.txt dosyasına kaydedildi.");
-              }
-            } catch (error) {
-              console.error("Bir hata oluştu:", error.message);
-              if (error.response) {
-                console.error("Sunucu yanıtı:", error.response.status, error.response.statusText);
-              }
-            }
-          })();
-          EOF
-
-      - name: Check if JSON file exists
-        id: check_file
+      - name: Değişiklikleri commit ve push et
         run: |
-          if [ -f "data-haberler.json" ]; then
-            echo "::set-output name=exists::true"
-            echo "JSON dosyası oluşturuldu, boyut: $(stat -c%s data-haberler.json) bytes"
-          else
-            echo "::set-output name=exists::false"
-            echo "JSON dosyası oluşturulamadı!"
-          fi
-
-      - name: Commit and push changes
-        if: steps.check_file.outputs.exists == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git config --global user.name "yujin061"
-          git config --global user.email "yucelaydin61@gmail.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data-haberler.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Update JSON file: $(date +'%Y-%m-%d %H:%M')" && git push "https://x-access-token:${GITHUB_TOKEN}@github.com/yujin061/karabukhaberler-json.git")
-          echo "Değişiklikler commit edildi ve push edildi."
+          git commit -m "🔄 data-haberler.json otomatik olarak güncellendi" || echo "Değişiklik yok"
+          git push
