@@ -45,8 +45,12 @@ jobs:
               print(f"Veri çekme hatası: {e}")
               exit(1)
 
-          # 'var data =' önekini kaldır ve içeriği temizle
+          # Ham veriyi dosyaya kaydet (hata ayıklamak için)
           raw_content = response.text
+          with open("raw_response.txt", "w", encoding="utf-8") as f:
+              f.write(raw_content)
+
+          # 'var data =' önekini kaldır ve içeriği temizle
           if raw_content.startswith("var data ="):
               raw_content = raw_content[len("var data ="):].strip()
 
@@ -55,6 +59,7 @@ jobs:
               data = json.loads(raw_content)
           except json.JSONDecodeError as e:
               print(f"JSON ayrıştırma hatası: {e}")
+              print(f"Ham içerik: {raw_content[:500]}...")  # İlk 500 karakteri yazdır
               exit(1)
 
           # html2text'i başlat
@@ -93,6 +98,13 @@ jobs:
           with open("data-haberler.json", "w", encoding="utf-8") as f:
               json.dump(cleaned_data, f, ensure_ascii=False, indent=2)
           EOF
+
+      - name: Ham yanıtı artifact olarak yükle
+        if: failure() # Hata durumunda çalışır
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-response
+          path: raw_response.txt
 
       - name: Değişiklikleri kaydet ve gönder
         run: |
