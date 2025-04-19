@@ -2,8 +2,8 @@ name: Karabuk Haberler JSON Güncelleme
 
 on:
   schedule:
-    - cron: '0 */4 * * *' # Her 4 saatte bir çalıştırılır
-  workflow_dispatch: # Manuel tetikleme için
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
 
 jobs:
   update-json:
@@ -13,20 +13,30 @@ jobs:
       - name: Repository'i checkout yap
         uses: actions/checkout@v4
 
+      - name: Gerekli araçları kur
+        run: sudo apt-get install -y jq
+
       - name: JSON verisini çek ve düzenle
         run: |
-          curl -s https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json | \
-          sed 's/^var data = //' | \
-          sed 's/;$//' > raw.json
-          
-          jq -r '[.haberler[] | select(.haberkisa != null and .haberkisa != "") | {
+          # Önce ham veriyi indir ve temizle
+          curl -s https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json \
+            | sed 's/^var data = //' \
+            | sed 's/;$//' > temp.json
+
+          # jq ile işle
+          jq '[.haberler[] | select(.haberkisa? and .haberkisa != "") | {
             kategoriadi: .kategoriadi,
             haberresim: .haberresim,
             haberbaslik: .haberbaslik,
             haberkisa: .haberkisa,
             tarih: .tarih,
-            detay_url: (.haberdetay | gsub("<[^>]*>"; "") | gsub("&quot;"; "\"") | gsub("&Ccedil;"; "Ç") | gsub("&ccedil;"; "ç") | gsub("&Ouml;"; "Ö") | gsub("&ouml;"; "ö") | gsub("&Uuml;"; "Ü") | gsub("&uuml;"; "ü") | gsub("&rsquo;"; "’") | gsub("&nbsp;"; " ") | gsub("&ldquo;"; "“") | gsub("&rdquo;"; "”") | gsub("&ndash;"; "–") | gsub("&mdash;"; "—") | gsub("&amp;"; "&") | gsub("&lsquo;"; "‘") | gsub("&hellip;"; "…") | gsub("&aacute;"; "á") | gsub("&eacute;"; "é") | gsub("&iacute;"; "í") | gsub("&oacute;"; "ó") | gsub("&uacute;"; "ú") | gsub("&ntilde;"; "ñ") | gsub("&uuml;"; "ü") | gsub("&#39;"; "'") | gsub("&deg;"; "°") | gsub("\n"; " ") | gsub("\t"; " ") | gsub(" +"; " ") | trim)
-          }]' raw.json > data-haberler.json
+            detay_url: (.haberdetay | gsub("<[^>]*>"; "") 
+              | gsub("&quot;"; "\"") 
+              | gsub("&[^;]*;"; "")  # Tüm HTML entity'leri kaldır (basit çözüm)
+              | gsub("\\n"; " ") 
+              | gsub("\\s+"; " ") 
+              | trim)
+          }]' temp.json > data-haberler.json
 
       - name: Değişiklikleri commit ve push et
         run: |
