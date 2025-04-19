@@ -41,14 +41,14 @@ jobs:
           git commit -m 'data-haberler.json güncellendi' || echo "Değişiklik yok"
           git push || echo "Push başarısız, değişiklik olmayabilir"
 
-      - name: Hata Durumunda Bildir
-        if: failure() && github.event_name == 'pull_request'
+      - name: Hata Durumunda Yeni Issue Oluştur
+        if: failure()
         uses: actions/github-script@v6
         with:
           script: |
-            await github.rest.issues.createComment({
+            await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number,
+              title: 'JSON Güncelleme Hatası',
               body: 'JSON güncelleme işlemi başarısız oldu. Lütfen error_log.txt dosyasını kontrol edin.'
             });
