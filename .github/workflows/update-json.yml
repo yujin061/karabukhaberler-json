@@ -63,6 +63,10 @@ jobs:
             return text;
           }
 
+          function removeBom(str) {
+            return str.replace(/^\uFEFF/, '');
+          }
+
           (async () => {
             try {
               console.log("JSON dosyası çekiliyor...");
@@ -70,11 +74,19 @@ jobs:
                 headers: {
                   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
                 },
-                responseType: 'arraybuffer' // Binary veri olarak al
+                responseType: 'arraybuffer'
               });
 
-              // İçeriği doğru karakter kodlamasıyla dönüştür
-              const decodedData = iconv.decode(response.data, 'win1254').toString('utf8');
+              // Birden fazla kodlama denemesi
+              let decodedData;
+              try {
+                decodedData = iconv.decode(response.data, 'win1254').toString('utf8');
+              } catch (e) {
+                decodedData = iconv.decode(response.data, 'utf8').toString('utf8');
+              }
+              
+              // BOM karakterini kaldır
+              decodedData = removeBom(decodedData);
               
               // JSON formatına uygun hale getirme
               const cleanedData = decodedData
@@ -101,6 +113,10 @@ jobs:
               console.log("JSON dosyası başarıyla güncellendi.");
             } catch (error) {
               console.error("Bir hata oluştu:", error);
+              // Hata detaylarını logla
+              if (error.response) {
+                console.error("Response data:", error.response.data.toString('utf8'));
+              }
               process.exit(1);
             }
           })();
