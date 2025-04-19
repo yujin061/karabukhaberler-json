@@ -16,8 +16,7 @@ jobs:
       - name: JSON verisini çek ve düzenle
         run: |
           curl -s https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json -o raw-data.json
-          cat raw-data.json | \
-          sed 's/^var data = //' | sed 's/;$//' | \
+          sed 's/^var data = //' raw-data.json | sed 's/;$//' > cleaned-data.json
           jq '[.haberler[] | select(.haberkisa != "") | {
             kategoriadi: .kategoriadi,
             haberresim: .haberresim,
@@ -25,7 +24,7 @@ jobs:
             haberkisa: .haberkisa,
             tarih: .tarih,
             detay_url: (.haberdetay | gsub("<[^>]*>"; "") | gsub("&quot;"; "\"") | gsub("&Ccedil;"; "Ç") | gsub("&ccedil;"; "ç") | gsub("&Ouml;"; "Ö") | gsub("&ouml;"; "ö") | gsub("&Uuml;"; "Ü") | gsub("&uuml;"; "ü") | gsub("&rsquo;"; "’") | gsub("&nbsp;"; " ") | gsub("&ldquo;"; "“") | gsub("&rdquo;"; "”"))
-          }]' > data-haberler.json
+          }]' cleaned-data.json > data-haberler.json
 
       - name: Değişiklikleri commit et
         run: |
