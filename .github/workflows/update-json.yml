@@ -51,14 +51,28 @@ jobs:
               f.write(raw_content)
 
           # Çöp karakterleri ve 'var data =' önekini kaldır
-          # JSON başlangıcına kadar olan her şeyi temizle
+          # Önce 'var data =' önekini bulmaya çalış
+          var_data_start = raw_content.find('var data =')
+          if var_data_start != -1:
+              raw_content = raw_content[var_data_start + len('var data ='):].strip()
+          else:
+              print("Uyarı: 'var data =' öneği bulunamadı, ham veriyi olduğu gibi işliyoruz")
+
+          # JSON başlangıcını bul (çöp karakterleri atla)
           json_start = raw_content.find('{"haberler":')
           if json_start == -1:
-              print("Hata: JSON verisi bulunamadı")
-              exit(1)
-          raw_content = raw_content[json_start:]
+              # Alternatif: Düzenli ifadeyle JSON benzeri içeriği çıkar
+              json_match = re.search(r'\{"haberler":\s*\[.*?\]\s*\}', raw_content, re.DOTALL)
+              if json_match:
+                  raw_content = json_match.group(0)
+              else:
+                  print("Hata: JSON verisi bulunamadı")
+                  print(f"Ham içerik (ilk 500 karakter): {raw_content[:500]}...")
+                  exit(1)
+          else:
+              raw_content = raw_content[json_start:]
 
-          # Bozuk karakterleri temizle (örneğin, � veya 뿯)
+          # Bozuk karakterleri temizle
           raw_content = raw_content.encode('utf-8', errors='ignore').decode('utf-8', errors='ignore')
 
           # JSON'u ayrıştır
