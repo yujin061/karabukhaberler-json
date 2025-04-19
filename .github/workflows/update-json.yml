@@ -15,21 +15,23 @@ jobs:
 
       - name: JSON verisini çek ve düzenle
         run: |
-          curl -s https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json -o raw-data.json
-          sed 's/^var data = //' raw-data.json | sed 's/;$//' > cleaned-data.json
-          jq '[.haberler[] | select(.haberkisa != "") | {
+          curl -s https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json | \
+          sed 's/^var data = //' | \
+          sed 's/;$//' > raw.json
+          
+          jq -r '[.haberler[] | select(.haberkisa != null and .haberkisa != "") | {
             kategoriadi: .kategoriadi,
             haberresim: .haberresim,
             haberbaslik: .haberbaslik,
             haberkisa: .haberkisa,
             tarih: .tarih,
-            detay_url: (.haberdetay | gsub("<[^>]*>"; "") | gsub("&quot;"; "\"") | gsub("&Ccedil;"; "Ç") | gsub("&ccedil;"; "ç") | gsub("&Ouml;"; "Ö") | gsub("&ouml;"; "ö") | gsub("&Uuml;"; "Ü") | gsub("&uuml;"; "ü") | gsub("&rsquo;"; "’") | gsub("&nbsp;"; " ") | gsub("&ldquo;"; "“") | gsub("&rdquo;"; "”"))
-          }]' cleaned-data.json > data-haberler.json
+            detay_url: (.haberdetay | gsub("<[^>]*>"; "") | gsub("&quot;"; "\"") | gsub("&Ccedil;"; "Ç") | gsub("&ccedil;"; "ç") | gsub("&Ouml;"; "Ö") | gsub("&ouml;"; "ö") | gsub("&Uuml;"; "Ü") | gsub("&uuml;"; "ü") | gsub("&rsquo;"; "’") | gsub("&nbsp;"; " ") | gsub("&ldquo;"; "“") | gsub("&rdquo;"; "”") | gsub("&ndash;"; "–") | gsub("&mdash;"; "—") | gsub("&amp;"; "&") | gsub("&lsquo;"; "‘") | gsub("&hellip;"; "…") | gsub("&aacute;"; "á") | gsub("&eacute;"; "é") | gsub("&iacute;"; "í") | gsub("&oacute;"; "ó") | gsub("&uacute;"; "ú") | gsub("&ntilde;"; "ñ") | gsub("&uuml;"; "ü") | gsub("&#39;"; "'") | gsub("&deg;"; "°") | gsub("\n"; " ") | gsub("\t"; " ") | gsub(" +"; " ") | trim)
+          }]' raw.json > data-haberler.json
 
-      - name: Değişiklikleri commit et
+      - name: Değişiklikleri commit ve push et
         run: |
-          git config --global user.name 'GitHub Actions'
-          git config --global user.email 'actions@github.com'
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data-haberler.json
-          git commit -m "JSON dosyası güncellendi"
+          git commit -m "🔄 data-haberler.json otomatik olarak güncellendi" || echo "Değişiklik yok"
           git push
