@@ -1,8 +1,8 @@
-name: Update JSON File
+name: JSON Dosyasını Güncelle
 
 on:
   schedule:
-    - cron: '0 */3 * * *' # Run Grok every 3 hours
+    - cron: '0 */3 * * *' # Her 3 saatte bir çalışır
   workflow_dispatch:
 
 jobs:
@@ -10,18 +10,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Depoyu kontrol et
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: Node.js'i kur
         uses: actions/setup-node@v3
         with:
           node-version: '18'
 
-      - name: Install dependencies
+      - name: Bağımlılıkları yükle
         run: npm install axios iconv-lite cheerio
 
-      - name: Fetch and update JSON
+      - name: JSON'u çek ve güncelle
         run: |
           node << 'EOF'
           const axios = require("axios");
@@ -29,35 +29,35 @@ jobs:
           const iconv = require("iconv-lite");
           const cheerio = require("cheerio");
 
-          // Turkish character and HTML entity mapping
+          // Türkçe karakter ve HTML varlıkları için eşleme
           const charMap = {
             "&Ccedil;": "Ç", "&ccedil;": "ç",
             "&Ouml;": "Ö", "&ouml;": "ö",
             "&Uuml;": "Ü", "&uuml;": "ü",
+            "&Scedil;": "Ş", "&scedil;": "ş",
+            "&Gbreve;": "Ğ", "&gbreve;": "ğ",
+            "&Idot;": "İ", "&inodot;": "ı",
             "&rsquo;": "'", "&nbsp;": " ",
             "&ldquo;": "\"", "&rdquo;": "\"",
             "&ndash;": "-", "&mdash;": "-",
             "&amp;": "&", "&lsquo;": "'",
             "&hellip;": "...", "&#39;": "'",
-            "&deg;": "°", "&aacute;": "á",
-            "&eacute;": "é", "&iacute;": "í",
-            "&oacute;": "ó", "&uacute;": "ú",
-            "&ntilde;": "ñ", "&quot;": "\""
+            "&deg;": "°", "&quot;": "\""
           };
 
           function cleanHtml(html) {
             if (!html) return "";
 
-            // Load HTML with cheerio and extract text
+            // HTML'yi cheerio ile yükle ve metni çıkar
             const $ = cheerio.load(html);
             let text = $.text();
 
-            // Replace HTML entities
+            // HTML varlıklarını dönüştür
             for (const [key, value] of Object.entries(charMap)) {
               text = text.replace(new RegExp(key, "g"), value);
             }
 
-            // Clean up extra whitespace
+            // Fazla boşlukları temizle
             text = text.replace(/\s+/g, " ").trim();
             return text;
           }
@@ -68,7 +68,7 @@ jobs:
 
           (async () => {
             try {
-              console.log("Fetching JSON file...");
+              console.log("JSON dosyası çekiliyor...");
               const response = await axios.get("https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json", {
                 headers: {
                   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
@@ -76,56 +76,56 @@ jobs:
                 responseType: 'arraybuffer'
               });
 
-              // Decode response with proper encoding
+              // Yanıtı uygun kodlamayla çöz
               let decodedData;
               try {
                 decodedData = iconv.decode(Buffer.from(response.data), 'win1254');
               } catch (e) {
-                console.log("Falling back to UTF-8 decoding...");
+                console.log("UTF-8 kodlamasına geri dönülüyor...");
                 decodedData = iconv.decode(Buffer.from(response.data), 'utf8');
               }
 
-              // Remove BOM and clean up the JSON string
+              // BOM karakterini kaldır ve JSON string'ini temizle
               decodedData = removeBom(decodedData);
               const cleanedData = decodedData
-                .replace(/^var data\s*=\s*/, '') // Remove "var data ="
-                .replace(/;[\s\r\n]*$/, '')      // Remove trailing semicolon
+                .replace(/^var data\s*=\s*/, '') // "var data =" kısmını kaldır
+                .replace(/;[\s\r\n]*$/, '')      // Sonda varsa noktalı virgülü kaldır
                 .trim();
 
-              // Parse JSON
+              // JSON'u ayrıştır
               const jsonData = JSON.parse(cleanedData);
 
-              // Filter and transform news items
+              // Haberleri filtrele ve dönüştür
               const filteredNews = jsonData.haberler
-                .filter(item => item.haberkisa && item.haberkisa.trim() !== "") // Skip items with empty haberkisa
+                .filter(item => item.haberkisa && item.haberkisa.trim() !== "") // haberkisa boş olanları atla
                 .map(item => ({
                   kategoriadi: item.kategoriadi,
                   haberresim: item.haberresim,
                   haberbaslik: item.haberbaslik,
                   haberkisa: item.haberkisa,
                   tarih: item.tarih,
-                  detay_url: cleanHtml(item.haberdetay) // Clean HTML in haberdetay
+                  detay_url: cleanHtml(item.haberdetay) // haberdetay'daki HTML'yi temizle
                 }));
 
-              // Save the cleaned JSON to file
+              // Temizlenmiş JSON'u dosyaya kaydet
               await fs.writeFile('data-haberler.json', JSON.stringify(filteredNews, null, 2), 'utf8');
-              console.log("JSON file successfully updated.");
+              console.log("JSON dosyası başarıyla güncellendi.");
             } catch (error) {
-              console.error("An error occurred:", error.message);
+              console.error("Bir hata oluştu:", error.message);
               if (error.response) {
-                console.error("Response data:", error.response.data.toString('utf8'));
+                console.error("Yanıt verisi:", error.response.data.toString('utf8'));
               }
               process.exit(1);
             }
           })();
           EOF
 
-      - name: Commit and push changes
+      - name: Değişiklikleri kaydet ve gönder
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add data-haberler.json
-          git commit -m "🔄 JSON file automatically updated" || echo "No changes to commit"
+          git commit -m "🔄 JSON dosyası otomatik güncellendi" || echo "Değişiklik yok"
           git push
