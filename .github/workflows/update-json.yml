@@ -1,3 +1,26 @@
+name: Update JSON File
+
+on:
+  schedule:
+    - cron: '0 */3 * * *' # Her 3 saatte bir çalıştırılır
+  workflow_dispatch:
+
+jobs:
+  update-json:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm install axios iconv-lite cheerio
+
       - name: Fetch and update JSON
         run: |
           node << 'EOF'
@@ -6,7 +29,43 @@
           const iconv = require("iconv-lite");
           const cheerio = require("cheerio");
 
-          // ... (önceki fonksiyonlar aynı)
+          // Türkçe karakter dönüşümleri için harita
+          const charMap = {
+            "&Ccedil;": "Ç", "&ccedil;": "ç",
+            "&Ouml;": "Ö", "&ouml;": "ö",
+            "&Uuml;": "Ü", "&uuml;": "ü",
+            "&rsquo;": "'", "&nbsp;": " ",
+            "&ldquo;": '"', "&rdquo;": '"',
+            "&ndash;": "-", "&mdash;": "-",
+            "&amp;": "&", "&lsquo;": "'",
+            "&hellip;": "...", "&#39;": "'",
+            "&deg;": "°", "&aacute;": "á",
+            "&eacute;": "é", "&iacute;": "í",
+            "&oacute;": "ó", "&uacute;": "ú",
+            "&ntilde;": "ñ", "&quot;": '"'
+          };
+
+          function cleanHtml(html) {
+            if (!html) return "";
+            
+            // HTML etiketlerini kaldır
+            const $ = cheerio.load(html);
+            let text = $.text();
+            
+            // HTML entity'leri dönüştür
+            for (const [key, value] of Object.entries(charMap)) {
+              text = text.replace(new RegExp(key, "g"), value);
+            }
+            
+            // Fazla boşlukları temizle
+            text = text.replace(/\s+/g, " ").trim();
+            
+            return text;
+          }
+
+          function removeBom(str) {
+            return str.replace(/^\uFEFF/, '');
+          }
 
           (async () => {
             try {
@@ -18,33 +77,57 @@
                 responseType: 'arraybuffer'
               });
 
-              // ... (önceki işlemler)
-
-            } catch (error) {
-              console.error("Bir hata oluştu:", error);
-              
-              // Hata detaylarını dosyaya yaz
-              if (error.response) {
-                try {
-                  const rawData = error.response.data;
-                  await fs.writeFile('error_response_raw.txt', rawData);
-                  await fs.writeFile('error_response_utf8.txt', rawData.toString('utf8'));
-                  console.log("Hata yanıtı error_response_*.txt dosyalarına kaydedildi");
-                } catch (fileError) {
-                  console.error("Hata yanıtı kaydedilemedi:", fileError);
-                }
+              // Birden fazla kodlama denemesi
+              let decodedData;
+              try {
+                decodedData = iconv.decode(response.data, 'win1254').toString('utf8');
+              } catch (e) {
+                decodedData = iconv.decode(response.data, 'utf8').toString('utf8');
               }
               
+              // BOM karakterini kaldır
+              decodedData = removeBom(decodedData);
+              
+              // JSON formatına uygun hale getirme
+              const cleanedData = decodedData
+                .replace(/^var data\s*=\s*/, '')
+                .replace(/;[\s\r\n]*$/, '')
+                .trim();
+
+              const jsonData = JSON.parse(cleanedData);
+
+              // Haberleri filtrele ve dönüştür
+              const filteredNews = jsonData.haberler
+                .filter(item => item.haberkisa && item.haberkisa.trim() !== "")
+                .map(item => ({
+                  kategoriadi: item.kategoriadi,
+                  haberresim: item.haberresim,
+                  haberbaslik: item.haberbaslik,
+                  haberkisa: item.haberkisa,
+                  tarih: item.tarih,
+                  detay_url: cleanHtml(item.haberdetay)
+                }));
+
+              // Yeni JSON dosyasını kaydetme
+              await fs.writeFile('data-haberler.json', JSON.stringify(filteredNews, null, 2), 'utf8');
+              console.log("JSON dosyası başarıyla güncellendi.");
+            } catch (error) {
+              console.error("Bir hata oluştu:", error);
+              // Hata detaylarını logla
+              if (error.response) {
+                console.error("Response data:", error.response.data.toString('utf8'));
+              }
               process.exit(1);
             }
           })();
           EOF
 
-      # Hata dosyalarını artifact olarak yükle
-      - name: Upload error files
-        if: failure()
-        uses: actions/upload-artifact@v3
-        with:
-          name: error-files
-          path: |
-            error_response_*.txt
+      - name: Commit and push changes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add data-haberler.json
+          git commit -m "🔄 JSON dosyası otomatik güncellendi" || echo "Değişiklik yok"
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/yujin061/karabukhaberler-json.git"
