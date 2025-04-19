@@ -15,9 +15,9 @@ jobs:
 
       - name: JSON verisini çek ve düzenle
         run: |
-          curl -s https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json | \
-          sed 's/^var data = //' | \
-          sed 's/;$//' | \
+          curl -s https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json -o raw-data.json
+          cat raw-data.json | \
+          sed 's/^var data = //' | sed 's/;$//' | \
           jq '[.haberler[] | select(.haberkisa != "") | {
             kategoriadi: .kategoriadi,
             haberresim: .haberresim,
