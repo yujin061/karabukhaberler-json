@@ -1,183 +1,55 @@
-name: Update JSON Data
+name: Update JSON File
 
 on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
   schedule:
-    - cron: '0 */3 * * *' # Her 3 saatte bir çalışır
-  workflow_dispatch: # Manuel tetikleme
+    - cron: '0 0 * * *' # Her gün gece yarısı çalışır
+  workflow_dispatch: # Manuel çalıştırma için
 
 jobs:
   update-json:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Depoyu çek
+      - name: Depoyu Çek
         uses: actions/checkout@v4
 
-      - name: Python'u kur
+      - name: Python Ortamını Kur
         uses: actions/setup-python@v5
         with:
           python-version: '3.x'
 
-      - name: Bağımlılıkları yükle
+      - name: Bağımlılıkları Yükle
         run: |
           python -m pip install --upgrade pip
-          pip install requests html2text
+          pip install requests beautifulsoup4
 
-      - name: JSON'u çek ve işle
+      - name: JSON Temizleme ve Doğrulama Betiğini Çalıştır
         run: |
-          python - <<EOF
-          import requests
-          import json
-          import html2text
-          import re
-          import sys
-          import unicodedata
+          python clean_json.py
 
-          # Konsol çıktısını UTF-8'e zorla
-          sys.stdout.reconfigure(encoding='utf-8')
+      - name: Değişiklikleri Kaydet
+        run: |
+          git config --global user.name 'GitHub Action'
+          git config --global user.email 'action@github.com'
+          git add data-haberler.json raw_response.txt error_log.txt
+          git commit -m 'data-haberler.json güncellendi' || echo "Değişiklik yok"
+          git push || echo "Push başarısız, değişiklik olmayabilir"
 
-          # JSON URL'si
-          url = "https://services.karabuk.bel.tr/jsons-karabukbeltr/data/data-haberler.json"
-          headers = {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-          }
-
-          # JSON'u çek
-          try:
-              response = requests.get(url, headers=headers, timeout=10)
-              response.raise_for_status()
-          except requests.exceptions.RequestException as e:
-              print(f"Veri çekme hatası: {e}")
-              with open("error_log.txt", "w", encoding="utf-8") as f:
-                  f.write(f"Veri çekme hatası: {e}\n")
-              exit(1)
-
-          # Ham veriyi dosyaya kaydet (hata ayıklamak için)
-          raw_content = response.content  # Bayt olarak al
-          with open("raw_response.txt", "wb") as f:
-              f.write(raw_content)
-
-          # Bayt düzeyinde BOM ve çöp karakterleri temizle
-          raw_content = raw_content.lstrip(b'\xef\xbb\xbf')  # UTF-8 BOM
-          raw_content = raw_content.lstrip(b'\xff\xfe')  # UTF-16 LE BOM
-          raw_content = raw_content.lstrip(b'\xfe\xff')  # UTF-16 BE BOM
-
-          # Metne çevir ve UTF-8'e zorla
-          try:
-              raw_content = raw_content.decode('utf-8', errors='ignore')
-          except UnicodeDecodeError as e:
-              print(f"Kodlama hatası: {e}")
-              with open("error_log.txt", "w", encoding="utf-8") as f:
-                  f.write(f"Kodlama hatası: {e}\n")
-              exit(1)
-
-          # Kontrol karakterlerini ve fazla boşlukları temizle
-          raw_content = ''.join(c for c in raw_content if unicodedata.category(c)[0] != 'C')  # Kontrol karakterlerini kaldır
-          raw_content = raw_content.replace('\r', '').replace('\n', ' ').replace('\t', ' ').strip()
-          raw_content = re.sub(r'\s+', ' ', raw_content)  # Fazla boşlukları birleştir
-
-          # Temizlenmiş ham veriyi kaydet
-          with open("cleaned_response.txt", "w", encoding="utf-8") as f:
-              f.write(raw_content)
-
-          # 'var data =' önekini bul ve kaldır
-          var_data_start = raw_content.find('var data =')
-          if var_data_start != -1:
-              raw_content = raw_content[var_data_start + len('var data ='):].strip()
-              print("Bilgi: 'var data =' öneği bulundu ve kaldırıldı")
-          else:
-              print("Uyarı: 'var data =' öneği bulunamadı, JSON başlangıcını arıyoruz")
-              with open("debug_log.txt", "w", encoding="utf-8") as f:
-                  f.write(f"var data = bulunamadı. Ham içerik (ilk 500 karakter): {raw_content[:500]}\n")
-
-          # JSON başlangıcını bul
-          json_start = raw_content.find('{"haberler":')
-          if json_start == -1:
-              # Alternatif: Düzenli ifadeyle JSON başlangıcını bul
-              json_match = re.search(r'\{"haberler":', raw_content)
-              if json_match:
-                  json_start = json_match.start()
-                  raw_content = raw_content[json_start:]
-                  print("Bilgi: JSON başlangıcı düzenli ifadeyle bulundu")
-              else:
-                  print("Hata: JSON verisi bulunamadı")
-                  print(f"Ham içerik (ilk 500 karakter): {raw_content[:500]}...")
-                  with open("error_log.txt", "w", encoding="utf-8") as f:
-                      f.write(f"Hata: JSON verisi bulunamadı\nHam içerik (ilk 500 karakter): {raw_content[:500]}...\n")
-                  exit(1)
-          else:
-              raw_content = raw_content[json_start:]
-              print("Bilgi: JSON başlangıcı bulundu")
-
-          # JSON verisini kaydet (hata ayıklamak için)
-          with open("json_response.txt", "w", encoding="utf-8") as f:
-              f.write(raw_content)
-
-          # JSON'u ayrıştır
-          try:
-              data = json.loads(raw_content)
-          except json.JSONDecodeError as e:
-              print(f"JSON ayrıştırma hatası: {e}")
-              print(f"Ham içerik (ilk 500 karakter): {raw_content[:500]}...")
-              with open("error_log.txt", "w", encoding="utf-8") as f:
-                  f.write(f"JSON ayrıştırma hatası: {e}\nHam içerik (ilk 500 karakter): {raw_content[:500]}...\n")
-              exit(1)
-
-          # html2text'i başlat
-          h = html2text.Html2text()
-          h.ignore_links = True
-          h.ignore_images = True
-          h.body_width = 0
-
-          # Verileri işle
-          cleaned_data = []
-          for item in data.get("haberler", []):
-              # haberkisa boşsa atla
-              if not item.get("haberkisa"):
-                  continue
-
-              # haberdetay'ı düz metne çevir
-              haberdetay = item.get("haberdetay", "")
-              if haberdetay:
-                  plain_text = h.handle(haberdetay)
-                  plain_text = re.sub(r'\n\s*\n', '\n', plain_text.strip())
-              else:
-                  plain_text = ""
-
-              # Temizlenmiş veriyi oluştur
-              cleaned_item = {
-                  "kategoriadi": item.get("kategoriadi", ""),
-                  "haberresim": item.get("haberresim", ""),
-                  "haberbaslik": item.get("haberbaslik", ""),
-                  "haberkisa": item.get("haberkisa", ""),
-                  "tarih": item.get("tarih", ""),
-                  "detay_url": plain_text
-              }
-              cleaned_data.append(cleaned_item)
-
-          # data-haberler.json'a yaz
-          with open("data-haberler.json", "w", encoding="utf-8") as f:
-              json.dump(cleaned_data, f, ensure_ascii=False, indent=2)
-          EOF
-
-      - name: Ham ve temizlenmiş yanıtları artifact olarak yükle
-        if: failure() # Hata durumunda çalışır
-        uses: actions/upload-artifact@v4
+      - name: Hata Durumunda Bildir
+        if: failure()
+        uses: actions/github-script@v6
         with:
-          name: response-files
-          path: |
-            raw_response.txt
-            cleaned_response.txt
-            json_response.txt
-            error_log.txt
-            debug_log.txt
-
-      - name: Değişiklikleri kaydet ve gönder
-        run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add data-haberler.json
-          git diff --quiet && git diff --staged --quiet || git commit -m "data-haberler.json güncellendi"
-          git push
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: 'JSON güncelleme işlemi başarısız oldu. Lütfen error_log.txt dosyasını kontrol edin.'
+            })
+```
