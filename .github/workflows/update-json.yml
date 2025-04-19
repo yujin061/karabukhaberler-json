@@ -46,13 +46,25 @@ jobs:
               exit(1)
 
           # Ham veriyi dosyaya kaydet (hata ayıklamak için)
-          raw_content = response.text
-          with open("raw_response.txt", "w", encoding="utf-8") as f:
+          raw_content = response.content  # Bayt olarak al
+          with open("raw_response.txt", "wb") as f:
               f.write(raw_content)
 
-          # BOM ve çöp karakterleri kaldır (örneğin, 뿯붿)
-          raw_content = raw_content.encode('utf-8', errors='ignore').decode('utf-8', errors='ignore')
-          raw_content = raw_content.lstrip('\ufeff\uefff')  # BOM karakterlerini kaldır
+          # Bayt düzeyinde BOM ve çöp karakterleri temizle
+          raw_content = raw_content.lstrip(b'\xef\xbb\xbf')  # UTF-8 BOM
+          raw_content = raw_content.lstrip(b'\xff\xfe')  # UTF-16 LE BOM
+          raw_content = raw_content.lstrip(b'\xfe\xff')  # UTF-16 BE BOM
+
+          # Metne çevir ve UTF-8'e zorla
+          try:
+              raw_content = raw_content.decode('utf-8', errors='ignore')
+          except UnicodeDecodeError as e:
+              print(f"Kodlama hatası: {e}")
+              exit(1)
+
+          # Temizlenmiş ham veriyi kaydet
+          with open("cleaned_response.txt", "w", encoding="utf-8") as f:
+              f.write(raw_content)
 
           # 'var data =' önekini bul ve kaldır
           var_data_start = raw_content.find('var data =')
@@ -66,13 +78,11 @@ jobs:
           if json_start == -1:
               print("Hata: JSON verisi bulunamadı")
               print(f"Ham içerik (ilk 500 karakter): {raw_content[:500]}...")
-              with open("cleaned_response.txt", "w", encoding="utf-8") as f:
-                  f.write(raw_content)
               exit(1)
           raw_content = raw_content[json_start:]
 
-          # Temizlenmiş veriyi dosyaya kaydet (hata ayıklamak için)
-          with open("cleaned_response.txt", "w", encoding="utf-8") as f:
+          # JSON verisini kaydet (hata ayıklamak için)
+          with open("json_response.txt", "w", encoding="utf-8") as f:
               f.write(raw_content)
 
           # JSON'u ayrıştır
@@ -128,6 +138,7 @@ jobs:
           path: |
             raw_response.txt
             cleaned_response.txt
+            json_response.txt
 
       - name: Değişiklikleri kaydet ve gönder
         run: |
