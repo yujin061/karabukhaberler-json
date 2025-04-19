@@ -50,16 +50,23 @@ jobs:
           with open("raw_response.txt", "w", encoding="utf-8") as f:
               f.write(raw_content)
 
-          # 'var data =' önekini kaldır ve içeriği temizle
-          if raw_content.startswith("var data ="):
-              raw_content = raw_content[len("var data ="):].strip()
+          # Çöp karakterleri ve 'var data =' önekini kaldır
+          # JSON başlangıcına kadar olan her şeyi temizle
+          json_start = raw_content.find('{"haberler":')
+          if json_start == -1:
+              print("Hata: JSON verisi bulunamadı")
+              exit(1)
+          raw_content = raw_content[json_start:]
+
+          # Bozuk karakterleri temizle (örneğin, � veya 뿯)
+          raw_content = raw_content.encode('utf-8', errors='ignore').decode('utf-8', errors='ignore')
 
           # JSON'u ayrıştır
           try:
               data = json.loads(raw_content)
           except json.JSONDecodeError as e:
               print(f"JSON ayrıştırma hatası: {e}")
-              print(f"Ham içerik: {raw_content[:500]}...")  # İlk 500 karakteri yazdır
+              print(f"Ham içerik (ilk 500 karakter): {raw_content[:500]}...")
               exit(1)
 
           # html2text'i başlat
