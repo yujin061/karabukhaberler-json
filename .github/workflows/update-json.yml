@@ -28,6 +28,7 @@ jobs:
           const fs = require("fs").promises;
           const iconv = require("iconv-lite");
           const cheerio = require("cheerio");
+          const path = require("path");
 
           // Türkçe karakter dönüşümleri için harita
           const charMap = {
@@ -48,23 +49,43 @@ jobs:
           function cleanHtml(html) {
             if (!html) return "";
             
-            // HTML etiketlerini kaldır
             const $ = cheerio.load(html);
             let text = $.text();
             
-            // HTML entity'leri dönüştür
             for (const [key, value] of Object.entries(charMap)) {
               text = text.replace(new RegExp(key, "g"), value);
             }
             
-            // Fazla boşlukları temizle
-            text = text.replace(/\s+/g, " ").trim();
-            
-            return text;
+            return text.replace(/\s+/g, " ").trim();
           }
 
           function removeBom(str) {
             return str.replace(/^\uFEFF/, '');
+          }
+
+          async function saveDebugFiles(error, responseData) {
+            try {
+              const debugDir = path.join(process.env.GITHUB_WORKSPACE, 'debug');
+              await fs.mkdir(debugDir, { recursive: true });
+              
+              // Ham veriyi kaydet
+              await fs.writeFile(path.join(debugDir, 'error_response_raw.txt'), responseData);
+              
+              // Farklı kodlamalarda deneyerek kaydet
+              const encodings = ['utf8', 'win1254', 'latin5', 'iso-8859-9'];
+              for (const enc of encodings) {
+                try {
+                  const decoded = iconv.decode(responseData, enc);
+                  await fs.writeFile(path.join(debugDir, `error_response_${enc}.txt`), decoded);
+                } catch (e) {
+                  console.error(`${enc} kodlamasıyla dönüştürme hatası:`, e.message);
+                }
+              }
+              
+              console.log(`Hata detayları ${debugDir} dizinine kaydedildi`);
+            } catch (fileError) {
+              console.error("Hata dosyaları kaydedilemedi:", fileError);
+            }
           }
 
           (async () => {
@@ -77,18 +98,33 @@ jobs:
                 responseType: 'arraybuffer'
               });
 
-              // Birden fazla kodlama denemesi
+              // Kodlama denemeleri
+              const encodings = ['win1254', 'utf8', 'latin5', 'iso-8859-9'];
               let decodedData;
-              try {
-                decodedData = iconv.decode(response.data, 'win1254').toString('utf8');
-              } catch (e) {
-                decodedData = iconv.decode(response.data, 'utf8').toString('utf8');
+              let lastError;
+              
+              for (const enc of encodings) {
+                try {
+                  decodedData = removeBom(iconv.decode(response.data, enc).toString());
+                  const cleanedData = decodedData
+                    .replace(/^var data\s*=\s*/, '')
+                    .replace(/;[\s\r\n]*$/, '')
+                    .trim();
+                  
+                  JSON.parse(cleanedData); // Test parse
+                  console.log(`Başarılı kodlama: ${enc}`);
+                  break;
+                } catch (e) {
+                  lastError = e;
+                  console.log(`${enc} kodlaması başarısız:`, e.message);
+                }
               }
               
-              // BOM karakterini kaldır
-              decodedData = removeBom(decodedData);
-              
-              // JSON formatına uygun hale getirme
+              if (!decodedData) {
+                throw lastError || new Error("Tüm kodlama denemeleri başarısız");
+              }
+
+              // Son işlemler
               const cleanedData = decodedData
                 .replace(/^var data\s*=\s*/, '')
                 .replace(/;[\s\r\n]*$/, '')
@@ -96,7 +132,6 @@ jobs:
 
               const jsonData = JSON.parse(cleanedData);
 
-              // Haberleri filtrele ve dönüştür
               const filteredNews = jsonData.haberler
                 .filter(item => item.haberkisa && item.haberkisa.trim() !== "")
                 .map(item => ({
@@ -108,21 +143,31 @@ jobs:
                   detay_url: cleanHtml(item.haberdetay)
                 }));
 
-              // Yeni JSON dosyasını kaydetme
               await fs.writeFile('data-haberler.json', JSON.stringify(filteredNews, null, 2), 'utf8');
               console.log("JSON dosyası başarıyla güncellendi.");
             } catch (error) {
-              console.error("Bir hata oluştu:", error);
-              // Hata detaylarını logla
+              console.error("İşlem hatası:", error);
+              
               if (error.response) {
-                console.error("Response data:", error.response.data.toString('utf8'));
+                await saveDebugFiles(error, error.response.data);
+              } else if (error.config) {
+                console.error("İstek yapılandırması:", error.config);
               }
+              
               process.exit(1);
             }
           })();
           EOF
 
+      - name: Upload debug files
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: debug-files
+          path: debug/
+
       - name: Commit and push changes
+        if: success()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
